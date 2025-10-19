@@ -1,7 +1,7 @@
 ---
 title: "Building a Trustworthy LLM-as-a-Judge: A Field Guide from the Trenches"
 date: 2025-10-17
-draft: true
+draft: false
 math: true
 summary: "Less prompting, more statistics"
 tags: ["LLM", "LLM-as-Judge"]
