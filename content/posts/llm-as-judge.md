@@ -82,6 +82,9 @@ Every reliable judge I've shipped has followed the same pattern:
 
 **Define → Analyze → Refine → Repeat**
 
+![The iterative development loop for LLM judges](/llm-judge/fig1_flow.png)
+*Figure 1: The judge development cycle. Each iteration refines your rubric based on systematic analysis of judge reasoning on edge cases and failures.*
+
 1. **Define the metric.** Write down what behavior you're measuring. Be specific about scope, edge cases, and what explicitly doesn't count.
 
 2. **Collect structured analyses.** Don't just ask for labels. Have the judge explain its reasoning in a constrained, template-driven format using tool calling (function calling APIs). This is critical: reading these analyses is how you discover what the judge actually understands.
@@ -120,9 +123,12 @@ Here's what that looks like in practice:
 }
 ```
 
+![Structured output schema showing analysis before label](/llm-judge/structured-output-schema.png)
+*Figure 2: A well-designed judge output schema. The field order matters: placing "analysis" before "label" forces the model to generate reasoning tokens before committing to a verdict.*
+
 **Why the field order matters:** Notice that `"analysis"` comes *before* `"label"` in the schema. This isn't arbitrary. LLMs generate structured outputs token-by-token in the order specified by the JSON schema. Multiple reports suggest that placing reasoning fields before conclusion fields often improves reliability, though effect sizes vary by model, task complexity, and rubric design.
 
-When you place reasoning fields before conclusion fields (like `{"reasoning": ..., "answer": ...}` instead of `{"answer": ..., "reasoning": ...}`), you force the model to generate its analysis tokens first, then commit to a verdict. Observed improvements in agreement metrics (Δκ ≈ 0.06–0.12 in some setups) suggest this ordering can help, but **always validate with your specific judge model and task**—run A/B comparisons with bootstrap CIs to quantify the effect in your environment.
+When you place reasoning fields before conclusion fields (like `{"reasoning": ..., "answer": ...}` instead of `{"answer": ..., "reasoning": ...}`), you force the model to generate its analysis tokens first, then commit to a verdict. 
 
 ![Field order comparison showing GPT-4o performance with reasoning-first vs answer-first schemas](/llm-judge/field-order-results.png)
 *Source: [Order of fields in Structured output can hurt LLMs output](https://www.dsdev.in/order-of-fields-in-structured-output-can-hurt-llms-output)*
@@ -183,6 +189,9 @@ Here's the pattern that works:
 - NA rate (high rates often signal metric misspecification or dataset issues)
 - Slice breakdowns (topic, length, difficulty)
 - Error analysis: read judge analyses on failed cases to identify patterns
+
+![Example binary rubric report dashboard](/llm-judge/fig3_binary_rubric_report.png)
+*Figure 3: Sample evaluation report for a binary rubric. Per-criterion breakdown reveals that most failures come from "relevance" violations, signaling where to focus rubric refinement.*
 
 ### Debugging Metrics by Reading Analyses
 
@@ -278,61 +287,27 @@ LLMs exhibit systematic position bias in pairwise comparisons. Multiple studies 
 
 **Measure it, then control it:** Before deploying pairwise evaluation, run a small pilot with equal-quality outputs and measure the position asymmetry (e.g., does the judge pick "first" 60% of the time?). Then apply AB/BA randomization and report this asymmetry in your results to demonstrate you've controlled for it.
 
+![Positional bias measurement across different models](/llm-judge/fig4_positional_bias.png)
+*Figure 4: Position bias varies by model. This chart shows the percentage of times different judges favor the "first" position when presented with equal-quality outputs. Controlled randomization is essential.*
+
 *See: "Judging the Judges: A Systematic Investigation of Position Bias" (2024) and Zheng et al.'s MT-Bench paper (2023) in Further Reading for detailed analysis of this bias.*
 
 The fix is simple: **randomize the order** for every comparison.
 
 > **Tip 8:** For pairwise comparisons, randomize the presentation order (AB vs BA) and log both the randomized order and original identities. Otherwise positional bias will corrupt your rankings.
 
-Here's the implementation pattern:
+![Pairwise comparison randomization flow](/llm-judge/fig5_pairwise-randomization.png)
+*Figure 5: AB/BA randomization workflow. For a dataset with N pairs, each pair is evaluated once with randomly assigned order (~50% AB, ~50% BA). The judge's verdict is then remapped using the logged presentation order to determine actual winners.*
 
-```python
-import random
+**The workflow:**
 
-# Upstream in your eval pipeline
-# Use a seeded RNG for reproducibility across runs/languages
-seed = 42
-rng = random.Random(seed)
+For each pair in your dataset, you:
+1. **Randomly assign** to either AB or BA order (50/50 split using a seeded RNG)
+2. **Present** to the judge in the randomized order (only once per pair)
+3. **Log** the presented order, original identities, and verdict
+4. **Remap** the verdict to determine which system actually won
 
-pairs = [(input_x, output_a, output_b) for ...]
-randomized_pairs = []
-
-for input_x, output_a, output_b in pairs:
-    # Randomize order for this pair
-    order = rng.choice(["AB", "BA"])
-
-    randomized_pairs.append({
-        "pair_id": f"{hash(input_x)}_{hash(output_a)}_{hash(output_b)}",
-        "presented_order": order,
-        "first": output_a if order == "AB" else output_b,
-        "second": output_b if order == "AB" else output_a,
-        "original_a": output_a,
-        "original_b": output_b,
-        "seed": seed
-    })
-```
-
-You log both the **randomized presentation** (what the judge saw) and the **original identities** (A and B). After collecting judgments, you need to map results back to determine which system actually won:
-
-```python
-# After getting judge verdict (e.g., "first" or "second")
-for pair, verdict in zip(randomized_pairs, judge_verdicts):
-    if verdict == "first":
-        winner = pair["original_a"] if pair["presented_order"] == "AB" else pair["original_b"]
-    elif verdict == "second":
-        winner = pair["original_b"] if pair["presented_order"] == "AB" else pair["original_a"]
-    else:  # tie
-        winner = "tie"
-
-    # Now you know which system (A or B) won for this input
-    results.append({
-        "input": input_x,
-        "winner": winner,  # "system_a", "system_b", or "tie"
-        "pair_id": pair["pair_id"]
-    })
-```
-
-This remapping ensures your final win rates reflect the actual systems being compared, not the randomized positions.
+This ensures your final win rates reflect the actual systems being compared, not artifacts of positional bias. With N pairs, you get N evaluations total (not 2N), with position effects balanced across the dataset.
 
 
 ### Aggregating Pairwise Wins: Bradley-Terry and Elo
@@ -373,6 +348,9 @@ where $S_i$ is the actual outcome (1 for win, 0 for loss) and $E_i$ is the expec
 **Which to use?**
 - **Bradley-Terry** when you have all comparisons upfront and want maximum likelihood estimates
 - **Elo** when comparisons arrive sequentially or you want interpretable ratings
+
+![Ranking with confidence intervals from Bradley-Terry model](/llm-judge/ranking-with-cis.png)
+*Figure 6: Model rankings with 95% bootstrap confidence intervals. Overlapping CIs (e.g., Model B and C) indicate no statistically significant difference despite different point estimates.*
 
 > **Tip 9:** Always report confidence intervals on rankings. Bootstrap your pairwise results and refit the model 1000+ times. "Model A wins 52% of the time" might be noise.
 
@@ -438,6 +416,9 @@ Spearman's ρ = 0.90. The judge mostly agrees on ordering, except it swapped out
 
 **When to use:** Correlation is good for continuous scores. If r or ρ < 0.7, your judge is measuring something different from what humans perceive.
 
+![Scatter plot showing judge vs human scores](/llm-judge/correlation-plot.png)
+*Figure 7: Judge scores vs. human scores with Pearson's r = 0.95. Strong linear correlation indicates the judge tracks human judgment well, though with slight systematic inflation.*
+
 ---
 
 **Agreement Metrics: Do the judge and humans give the same labels?**
@@ -471,6 +452,9 @@ where $P_o$ = observed agreement, $P_e$ = expected agreement by chance.
 
 3. **Cohen's κ:**
    $$\kappa = \frac{0.85 - 0.50}{1 - 0.50} = \frac{0.35}{0.50} = 0.70$$
+
+![Confusion matrix for judge vs human labels](/llm-judge/confusion-matrix.png)
+*Figure 8: Confusion matrix showing agreement patterns. The 85% observed agreement yields κ = 0.70 (substantial agreement) after accounting for chance.*
 
 **Interpretation:**
 - κ < 0: Worse than chance (something is broken)
@@ -569,6 +553,9 @@ Is this significantly better than System B's 70%? Let's bootstrap to find out.
 
 **When CIs don't overlap:** If System A had 85% pass rate with CI [78%, 92%] and System B had 70% with CI [62%, 78%], the CIs barely overlap, giving stronger evidence of a real difference.
 
+![Bootstrap distribution and confidence intervals](/llm-judge/bootstrap-ci.png)
+*Figure 9: Bootstrap distributions for two systems. System A (75% ± 8pp) vs System B (70% ± 8pp) show substantial CI overlap, suggesting the 5pp difference may be noise rather than a true improvement.*
+
 If your headline number is "Model A improves accuracy by 3%" but the CI is [-1%, +7%], you're looking at noise.
 
 ---
@@ -627,6 +614,9 @@ Run the judge N times (N ≥ 3) on the same input at low temperature (e.g., 0.0 
 
 **Good example:** All 5 runs give identical judgments across all criteria. This suggests the metric is well-defined and the judge interprets it consistently.
 
+![Self-consistency check results across 5 runs](/llm-judge/self-consistency.png)
+*Figure 10: Self-consistency check on the same input across 5 runs. Run 4 diverges on "relevance" and final label, signaling rubric ambiguity that needs addressing.*
+
 **Quantify variance:** Beyond manual inspection, track **per-case label entropy** across runs:
 - For each input, compute entropy: $H = -\sum_i p_i \log_2(p_i)$ where $p_i$ is the proportion of runs that yielded label $i$
 - Example: 5 runs → 4 "fail", 1 "pass" → $H = -(0.8 \log_2 0.8 + 0.2 \log_2 0.2) \approx 0.72$ bits
@@ -678,6 +668,9 @@ Headline metrics lie. A 5% aggregate improvement can hide a 15% regression on ha
 - **Language** (especially if you claim multilingual support)
 
 If your improvement doesn't hold across slices, it's probably a measurement artifact or overfitting to your test distribution.
+
+![Performance sliced by topic, length, and difficulty](/llm-judge/slice-heatmap.png)
+*Figure 12: Heatmap of pass rates across slices. The 5% aggregate improvement hides a 15% regression on hard technical content (red cell), revealing the change primarily benefits easy/creative tasks.*
 
 **Multiple-comparison correction:** When testing many slices or variants, apply **Holm-Bonferroni correction** or report **q-values (FDR)** to avoid false discoveries. If you test 20 slices at p < 0.05, you expect 1 false positive by chance alone. Correction methods control the family-wise error rate.
 
@@ -774,6 +767,9 @@ This fails fast with clear errors instead of silently degrading when the model o
 - 🟢 Green: Within acceptance band → judge is stable
 - 🟡 Amber: 1-2× acceptance band → review rubric for ambiguity
 - 🔴 Red: >2× acceptance band → judge too stochastic or rubric severely under-specified
+
+![A/A test dashboard with acceptance bands](/llm-judge/aa-test-dashboard.png)
+*Figure 11: A/A test results dashboard. Pass-rate delta of 1.5pp is within the 2pp acceptance band (green), indicating good judge stability.*
 
 **Large divergence signals problems:**
 - The judge is too stochastic → lower temperature, use majority vote
