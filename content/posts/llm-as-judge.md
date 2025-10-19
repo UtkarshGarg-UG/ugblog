@@ -670,7 +670,7 @@ Headline metrics lie. A 5% aggregate improvement can hide a 15% regression on ha
 If your improvement doesn't hold across slices, it's probably a measurement artifact or overfitting to your test distribution.
 
 ![Performance sliced by topic, length, and difficulty](/llm-judge/slice-heatmap.png)
-*Figure 12: Heatmap of pass rates across slices. The 5% aggregate improvement hides a 15% regression on hard technical content (red cell), revealing the change primarily benefits easy/creative tasks.*
+*Figure 11: Heatmap of pass rates across slices. The 5% aggregate improvement hides a 15% regression on hard technical content (red cell), revealing the change primarily benefits easy/creative tasks.*
 
 **Multiple-comparison correction:** When testing many slices or variants, apply **Holm-Bonferroni correction** or report **q-values (FDR)** to avoid false discoveries. If you test 20 slices at p < 0.05, you expect 1 false positive by chance alone. Correction methods control the family-wise error rate.
 
