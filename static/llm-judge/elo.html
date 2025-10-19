@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Elo Rating Playground</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#111827; --muted:#6b7280; --ring:#e5e7eb;
+    --accent:#8b5cf6; --accent-soft:#ddd6fe; --good:#10b981; --bad:#ef4444;
+  }
+  html,body{background:var(--bg);color:var(--fg);margin:0;padding:0;
+    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans";}
+  .wrap{display:grid;gap:16px;padding:16px;box-sizing:border-box;max-width:1200px;margin:0 auto;}
+  .title{font-size:18px;font-weight:700;margin:0}
+  .subtitle{font-size:13px;color:var(--muted);margin:4px 0 0}
+  .panel{border:1px solid var(--ring);border-radius:12px;background:#f9fafb}
+  .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:12px}
+  .field{display:grid;gap:6px}
+  .field label{font-size:12px;font-weight:600;color:var(--muted)}
+  input[type="range"]{width:100%}
+  input[type="number"]{width:100%;padding:6px 8px;border:1px solid var(--ring);border-radius:8px;font-size:14px}
+  .value{font-size:14px;font-weight:600}
+  .buttons{display:flex;gap:8px;flex-wrap:wrap}
+  button{padding:8px 14px;border:1px solid var(--ring);background:#fff;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600}
+  button:hover{background:#f3f4f6}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.primary:hover{filter:brightness(0.95)}
+  .layout{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}
+  .chart{width:100%;height:420px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .card{border:1px solid var(--ring);border-radius:12px;padding:12px;background:#fff}
+  .row{display:flex;align-items:center;justify-content:space-between}
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace}
+  .h3{margin:0 0 10px 0;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{border:1px solid var(--ring);padding:8px;text-align:center}
+  th{background:#f9fafb;font-weight:700}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:#4c1d95;font-weight:700;font-size:12px}
+  .good{color:var(--good);font-weight:700}
+  .bad{color:var(--bad);font-weight:700}
+  @media (max-width:980px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h1 class="title">Elo Rating Playground</h1>
+    <p class="subtitle">Tweak K-factor, chaos, and home advantage. Simulate matches and watch ratings learn &amp; converge. 🎯</p>
+  </div>
+
+  <!-- Controls -->
+  <div class="panel controls">
+    <div class="field">
+      <label>K-factor</label>
+      <input id="kFactor" type="range" min="4" max="64" step="1" value="24">
+      <div class="value"><span id="kVal">24</span></div>
+    </div>
+    <div class="field">
+      <label>Home-field advantage (rating points)</label>
+      <input id="homeAdv" type="range" min="0" max="120" step="5" value="40">
+      <div class="value"><span id="hVal">40</span> pts</div>
+    </div>
+    <div class="field">
+      <label>Chaos (randomness)</label>
+      <input id="chaos" type="range" min="0" max="100" step="1" value="15">
+      <div class="value"><span id="cVal">15</span>%</div>
+    </div>
+    <div class="field">
+      <label>Matches per pair (Simulate Season)</label>
+      <input id="perPair" type="number" min="1" max="100" value="10">
+      <div class="value"><span id="ppVal">10</span> each</div>
+    </div>
+    <div class="field">
+      <label>True Skill: System A</label>
+      <input id="skillA" type="range" min="1000" max="2400" step="10" value="1600">
+      <div class="value">μₐ = <span id="sA">1600</span></div>
+    </div>
+    <div class="field">
+      <label>True Skill: System B</label>
+      <input id="skillB" type="range" min="1000" max="2400" step="10" value="1500">
+      <div class="value">μᵦ = <span id="sB">1500</span></div>
+    </div>
+    <div class="field">
+      <label>True Skill: System C</label>
+      <input id="skillC" type="range" min="1000" max="2400" step="10" value="1400">
+      <div class="value">μᴄ = <span id="sC">1400</span></div>
+    </div>
+  </div>
+
+  <!-- Buttons -->
+  <div class="buttons">
+    <button id="playRandom" class="primary">Play Random Match</button>
+    <button id="simulateRR">Simulate Season (round-robin)</button>
+    <button id="reset">Reset Ratings</button>
+  </div>
+
+  <!-- Quick info cards -->
+  <div class="cards">
+    <div class="card">
+      <div class="row"><span class="h3">Current Ratings</span><span class="chip">Elo</span></div>
+      <table>
+        <thead><tr><th>System</th><th>Rating</th><th>W-L</th></tr></thead>
+        <tbody>
+          <tr><td>A</td><td class="mono" id="rA">1500</td><td class="mono" id="wlA">0-0</td></tr>
+          <tr><td>B</td><td class="mono" id="rB">1500</td><td class="mono" id="wlB">0-0</td></tr>
+          <tr><td>C</td><td class="mono" id="rC">1500</td><td class="mono" id="wlC">0-0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="row"><span class="h3">Win Prob (Elo)</span><span class="chip">Live</span></div>
+      <div class="field">
+        <label>Rating Diff (A − B)</label>
+        <input id="diffSlider" type="range" min="-600" max="600" step="10" value="0">
+        <div class="value">Δ = <span id="diffVal">0</span>,  P(A wins) = <span id="pAB">50.0%</span></div>
+      </div>
+      <div id="curve" class="chart"></div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="layout">
+    <div class="panel" style="padding:12px">
+      <h3 class="h3">Rating Trajectories</h3>
+      <div id="historyChart" class="chart"></div>
+    </div>
+    <div class="panel" style="padding:12px">
+      <h3 class="h3">Leaderboard</h3>
+      <div id="leaderChart" class="chart"></div>
+    </div>
+  </div>
+
+  <!-- Last match recap -->
+  <div class="panel" style="padding:12px">
+    <h3 class="h3">Last Match Recap</h3>
+    <div id="recap" class="mono">—</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // --- Elements
+  const kEl = document.getElementById('kFactor');
+  const hEl = document.getElementById('homeAdv');
+  const cEl = document.getElementById('chaos');
+  const ppEl= document.getElementById('perPair');
+
+  const sAEl = document.getElementById('skillA');
+  const sBEl = document.getElementById('skillB');
+  const sCEl = document.getElementById('skillC');
+
+  const kVal = document.getElementById('kVal');
+  const hVal = document.getElementById('hVal');
+  const cVal = document.getElementById('cVal');
+  const ppVal= document.getElementById('ppVal');
+  const sAVal= document.getElementById('sA');
+  const sBVal= document.getElementById('sB');
+  const sCVal= document.getElementById('sC');
+
+  const rA = document.getElementById('rA');
+  const rB = document.getElementById('rB');
+  const rC = document.getElementById('rC');
+  const wlA = document.getElementById('wlA');
+  const wlB = document.getElementById('wlB');
+  const wlC = document.getElementById('wlC');
+
+  const recap = document.getElementById('recap');
+
+  const diffSlider = document.getElementById('diffSlider');
+  const diffVal = document.getElementById('diffVal');
+  const pAB = document.getElementById('pAB');
+
+  const historyChart = document.getElementById('historyChart');
+  const leaderChart  = document.getElementById('leaderChart');
+  const curveChart   = document.getElementById('curve');
+
+  const playBtn = document.getElementById('playRandom');
+  const simBtn  = document.getElementById('simulateRR');
+  const resetBtn= document.getElementById('reset');
+
+  // --- State
+  const NAMES = ['A','B','C'];
+  const COLORS= {A:'#ef4444', B:'#3b82f6', C:'#10b981'};
+  let ratings = {A:1500, B:1500, C:1500};
+  let wins    = {A:0, B:0, C:0};
+  let losses  = {A:0, B:0, C:0};
+  let hist    = [{t:0, ...ratings}];
+  let tStep   = 0;
+
+  // --- Utils
+  function eloExpected(rA, rB){ return 1/(1+Math.pow(10, (rB-rA)/400)); }
+  function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
+  function sampleBernoulli(p){ return Math.random() < p ? 1 : 0; }
+  function pickHome(){ return Math.random() < 0.5 ? 'homeA' : 'homeB'; }
+
+  function trueWinProb(player, opp){
+    // "True skill" drives outcomes; chaos softens certainty.
+    const mu = {A:+sAEl.value, B:+sBEl.value, C:+sCEl.value};
+    const chaos = +cEl.value / 100; // 0..1
+    // Effective logistic scale: inflate denominator when chaos high
+    const scale = 400 * (1 + 2*chaos);
+    const hAdv  = +hEl.value;
+    // random home each match handled elsewhere; here assume neutral
+    return 1/(1+Math.pow(10, ( (mu[opp]-mu[player]) / scale )));
+  }
+
+  function updateCards(){
+    rA.textContent = Math.round(ratings.A);
+    rB.textContent = Math.round(ratings.B);
+    rC.textContent = Math.round(ratings.C);
+    wlA.textContent = wins.A + '-' + losses.A;
+    wlB.textContent = wins.B + '-' + losses.B;
+    wlC.textContent = wins.C + '-' + losses.C;
+  }
+
+  function pushHistory(){
+    tStep += 1;
+    hist.push({t:tStep, ...ratings});
+  }
+
+  // --- Charts
+  async function initCharts(){
+    // Rating trajectories
+    const layoutHist = {
+      height:420, margin:{l:50,r:20,t:20,b:40},
+      xaxis:{title:'Match #'}, yaxis:{title:'Rating', range:[1200, 2000]},
+      showlegend:true, legend:{orientation:'h', x:0.5, xanchor:'center', y:-0.2}
+    };
+    const traces = NAMES.map(n => ({
+      x:[0], y:[ratings[n]],
+      mode:'lines+markers', name:`System ${n}`, line:{color:COLORS[n]}
+    }));
+    await Plotly.newPlot(historyChart, traces, layoutHist, {displayModeBar:false, responsive:true});
+
+    // Leaderboard
+    const layoutLead = {
+      height:420, margin:{l:60,r:20,t:20,b:60}, yaxis:{title:'Rating', range:[1200, 2000]}
+    };
+    await Plotly.newPlot(leaderChart, [{
+      x:['System A','System B','System C'],
+      y:[ratings.A, ratings.B, ratings.C],
+      type:'bar',
+      text:[Math.round(ratings.A), Math.round(ratings.B), Math.round(ratings.C)],
+      textposition:'outside',
+      marker:{color:[COLORS.A, COLORS.B, COLORS.C]}
+    }], layoutLead, {displayModeBar:false, responsive:true});
+
+    // Win prob curve (A vs B)
+    const xs = []; const ys = [];
+    for(let d=-600; d<=600; d+=10){ xs.push(d); ys.push(100* (1/(1+Math.pow(10, (-d)/400)))); }
+    await Plotly.newPlot(curveChart, [
+      {x:xs, y:ys, mode:'lines', name:'P(A beats B)', line:{shape:'spline'} },
+      {x:[0], y:[50], mode:'markers+text', text:['Δ'], textposition:'top center', name:'Δ marker'}
+    ], {height:300, margin:{l:50,r:20,t:10,b:40}, xaxis:{title:'Rating Diff Δ (A−B)'}, yaxis:{title:'P(A wins) %', range:[0,100]}},
+    {displayModeBar:false, responsive:true});
+  }
+
+  function refreshCharts(){
+    // History
+    const xs = hist.map(h=>h.t);
+    const ysA= hist.map(h=>h.A);
+    const ysB= hist.map(h=>h.B);
+    const ysC= hist.map(h=>h.C);
+    Plotly.restyle(historyChart, {x:[xs], y:[ysA]}, [0]);
+    Plotly.restyle(historyChart, {x:[xs], y:[ysB]}, [1]);
+    Plotly.restyle(historyChart, {x:[xs], y:[ysC]}, [2]);
+
+    // Leaderboard
+    Plotly.restyle(leaderChart, {
+      y:[[ratings.A, ratings.B, ratings.C]],
+      text:[[Math.round(ratings.A), Math.round(ratings.B), Math.round(ratings.C)]]
+    }, [0]);
+  }
+
+  function updateCurveMarker(){
+    const d = +diffSlider.value;
+    const p = 100*(1/(1+Math.pow(10, (-d)/400)));
+    diffVal.textContent = d;
+    pAB.textContent = p.toFixed(1) + '%';
+    Plotly.restyle(curveChart, {x:[[d]], y:[[p]]}, [1]);
+  }
+
+  // --- Match engine
+  function playMatch(idA, idB){
+    // Randomly assign home; apply homeAdv to Elo expected only (common approach)
+    const home = pickHome();
+    const homePts = +hEl.value;
+    let rAeff = ratings[idA], rBeff = ratings[idB];
+    if(home === 'homeA'){ rAeff += homePts; } else { rBeff += homePts; }
+
+    // True outcome from latent skills + chaos (neutral baseline)
+    let pTrue = trueWinProb(idA, idB);
+    // modest extra nudge for home team in the true process:
+    if(home === 'homeA') pTrue = clamp(pTrue + (homePts/1600), 0.01, 0.99);
+    else                 pTrue = clamp(pTrue - (homePts/1600), 0.01, 0.99);
+
+    const winnerIsA = sampleBernoulli(pTrue) === 1;
+
+    // Elo update using expected on (effective) Elo ratings
+    const K = +kEl.value;
+    const EA = eloExpected(rAeff, rBeff);
+    const SA = winnerIsA ? 1 : 0;
+    const SB = 1 - SA;
+
+    const dA = K*(SA - EA);
+    const dB = -dA;
+
+    ratings[idA] += dA;
+    ratings[idB] += dB;
+
+    if(winnerIsA){ wins[idA]++; losses[idB]++; } else { wins[idB]++; losses[idA]++; }
+
+    // Record history + recap
+    pushHistory();
+    recap.innerHTML = `Match ${tStep}: ${home==='homeA'?'🏟️ A (home) vs B':'A vs 🏟️ B (home)'} — `
+      + (winnerIsA ? '<span class="good">A wins</span>' : '<span class="bad">B wins</span>')
+      + ` | Expected(A)=${(EA*100).toFixed(1)}% | Δrating A=${dA.toFixed(1)}, B=${dB.toFixed(1)} | `
+      + `True p(A)≈${(pTrue*100).toFixed(1)}%`;
+
+    updateCards();
+    refreshCharts();
+  }
+
+  function playRandom(){
+    const pairs = [['A','B'],['A','C'],['B','C']];
+    const ix = Math.floor(Math.random()*pairs.length);
+    const [i,j] = pairs[ix];
+    if(i==='A' && j==='B') playMatch('A','B');
+    else if(i==='A' && j==='C') playAC();
+    else playBC();
+  }
+
+  // Helpers to keep recap "vs C" fun too
+  function playAC(){ // A vs C
+    const home = pickHome();
+    const homePts = +hEl.value;
+    let rAeff = ratings.A, rCeff = ratings.C;
+    if(home === 'homeA'){ rAeff += homePts; } else { rCeff += homePts; }
+
+    let pTrue = 1/(1+Math.pow(10, ((+sCEl.value - +sAEl.value)/(400*(1+2*(+cEl.value/100))))));
+    if(home === 'homeA') pTrue = clamp(pTrue + (homePts/1600), 0.01, 0.99);
+    else                 pTrue = clamp(pTrue - (homePts/1600), 0.01, 0.99);
+
+    const K=+kEl.value; const EA=eloExpected(rAeff,rCeff);
+    const winnerA = sampleBernoulli(pTrue)===1;
+    const SA = winnerA?1:0; const dA=K*(SA - EA); const dC=-dA;
+    ratings.A += dA; ratings.C += dC;
+    if(winnerA){ wins.A++; losses.C++; } else { wins.C++; losses.A++; }
+
+    pushHistory();
+    recap.innerHTML = `Match ${tStep}: ${home==='homeA'?'🏟️ A (home) vs C':'A vs 🏟️ C (home)'} — `
+      + (winnerA ? '<span class="good">A wins</span>' : '<span class="bad">C wins</span>')
+      + ` | Expected(A)=${(EA*100).toFixed(1)}% | Δrating A=${dA.toFixed(1)}, C=${dC.toFixed(1)} | `
+      + `True p(A)≈${(pTrue*100).toFixed(1)}%`;
+
+    updateCards(); refreshCharts();
+  }
+
+  function playBC(){ // B vs C
+    const home = pickHome();
+    const homePts = +hEl.value;
+    let rBeff = ratings.B, rCeff = ratings.C;
+    if(home === 'homeA'){ rBeff += homePts; } else { rCeff += homePts; }
+
+    let pTrue = 1/(1+Math.pow(10, ((+sCEl.value - +sBEl.value)/(400*(1+2*(+cEl.value/100))))));
+    if(home === 'homeA') pTrue = clamp(pTrue + (homePts/1600), 0.01, 0.99);
+    else                 pTrue = clamp(pTrue - (homePts/1600), 0.01, 0.99);
+
+    const K=+kEl.value; const EB=eloExpected(rBeff,rCeff);
+    const winnerB = sampleBernoulli(pTrue)===1;
+    const SB = winnerB?1:0; const dB=K*(SB - EB); const dC=-dB;
+    ratings.B += dB; ratings.C += dC;
+    if(winnerB){ wins.B++; losses.C++; } else { wins.C++; losses.B++; }
+
+    pushHistory();
+    recap.innerHTML = `Match ${tStep}: ${home==='homeA'?'🏟️ B (home) vs C':'B vs 🏟️ C (home)'} — `
+      + (winnerB ? '<span class="good">B wins</span>' : '<span class="bad">C wins</span>')
+      + ` | Expected(B)=${(EB*100).toFixed(1)}% | Δrating B=${dB.toFixed(1)}, C=${dC.toFixed(1)} | `
+      + `True p(B)≈${(pTrue*100).toFixed(1)}%`;
+
+    updateCards(); refreshCharts();
+  }
+
+  async function simulateSeason(){
+    const perPair = +ppEl.value;
+    const schedule = [];
+    for(let i=0;i<perPair;i++){
+      schedule.push(['A','B']); schedule.push(['A','C']); schedule.push(['B','C']);
+    }
+    // Shuffle schedule for fun
+    for(let i=schedule.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [schedule[i],schedule[j]]=[schedule[j],schedule[i]];
+    }
+    for(const [x,y] of schedule){
+      if(x==='A'&&y==='B') playMatch('A','B');
+      else if(x==='A'&&y==='C') playAC();
+      else playBC();
+      await new Promise(r=>setTimeout(r, 80)); // small animation delay
+    }
+  }
+
+  function resetAll(){
+    ratings = {A:1500, B:1500, C:1500};
+    wins    = {A:0, B:0, C:0};
+    losses  = {A:0, B:0, C:0};
+    hist    = [{t:0, ...ratings}];
+    tStep   = 0;
+    recap.textContent='—';
+    updateCards();
+    refreshCharts();
+  }
+
+  // --- Wire events
+  function updateLabels(){
+    kVal.textContent = kEl.value;
+    hVal.textContent = hEl.value;
+    cVal.textContent = cEl.value;
+    ppVal.textContent= ppEl.value;
+    sAVal.textContent= sAEl.value;
+    sBVal.textContent= sBEl.value;
+    sCVal.textContent= sCEl.value;
+  }
+
+  [kEl,hEl,cEl,ppEl,sAEl,sBEl,sCEl].forEach(el=>{
+    el.addEventListener('input', ()=>{ updateLabels(); });
+  });
+
+  diffSlider.addEventListener('input', updateCurveMarker);
+
+  playBtn.addEventListener('click', ()=>{
+    const r = Math.random();
+    if(r<1/3) playMatch('A','B');
+    else if(r<2/3) playAC();
+    else playBC();
+  });
+
+  simBtn.addEventListener('click', simulateSeason);
+  resetBtn.addEventListener('click', resetAll);
+
+  // --- Init
+  (async function(){
+    updateLabels();
+    updateCards();
+    await initCharts();
+    refreshCharts();
+    updateCurveMarker();
+  })();
+
+})();
+</script>
+</body>
+</html>

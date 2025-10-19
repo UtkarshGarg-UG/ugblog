@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=62573&amp;path=livereload" data-no-instant defer></script><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Shannon Entropy | UG&#39;s Blog</title>
+<meta name="keywords" content="math, information-theory">
+<meta name="description" content="A quick visual intuition for entropy with an interactive chart.">
+<meta name="author" content="">
+<link rel="canonical" href="http://localhost:62573/posts/shannon-entropy/">
+<link crossorigin="anonymous" href="/assets/css/stylesheet.45c84dfdf98dfd4e1e3676f7b399a9e46f9aac37a6e0d21315a5c48e1cb6d5d4.css" integrity="sha256-RchN/fmN/U4eNnb3s5mp5G&#43;arDem4NITFaXEjhy21dQ=" rel="preload stylesheet" as="style">
+<link rel="icon" href="http://localhost:62573/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="http://localhost:62573/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="http://localhost:62573/favicon-32x32.png">
+<link rel="apple-touch-icon" href="http://localhost:62573/apple-touch-icon.png">
+<link rel="mask-icon" href="http://localhost:62573/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<link rel="alternate" hreflang="en" href="http://localhost:62573/posts/shannon-entropy/">
+<noscript>
+    <style>
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+    <style>
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --theme: rgb(29, 30, 32);
+                --entry: rgb(46, 46, 51);
+                --primary: rgb(218, 218, 219);
+                --secondary: rgb(155, 156, 157);
+                --tertiary: rgb(65, 66, 68);
+                --content: rgb(196, 196, 197);
+                --code-block-bg: rgb(46, 46, 51);
+                --code-bg: rgb(55, 56, 62);
+                --border: rgb(51, 51, 51);
+            }
+
+            .list {
+                background: var(--theme);
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-track {
+                background: 0 0;
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-thumb {
+                border-color: var(--theme);
+            }
+        }
+
+    </style>
+</noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body,{
+          delimiters:[
+            {left:'$$', right:'$$', display:true},
+            {left:'\\(', right:'\\)', display:false},
+            {left:'\\[', right:'\\]', display:true},
+            { left: '$',  right: '$',  display: false }
+          ]
+        });"></script>
+
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="http://localhost:62573/" accesskey="h" title="UG&#39;s Blog (Alt + H)">UG&#39;s Blog</a>
+            <div class="logo-switches">
+                <button id="theme-toggle" accesskey="t" title="(Alt + T)" aria-label="Toggle theme">
+                    <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <ul id="menu">
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    
+    <h1 class="post-title entry-hint-parent">
+      Shannon Entropy
+      <span class="entry-hint" title="Draft">
+        <svg xmlns="http://www.w3.org/2000/svg" height="35" viewBox="0 -960 960 960" fill="currentColor">
+          <path
+            d="M160-410v-60h300v60H160Zm0-165v-60h470v60H160Zm0-165v-60h470v60H160Zm360 580v-123l221-220q9-9 20-13t22-4q12 0 23 4.5t20 13.5l37 37q9 9 13 20t4 22q0 11-4.5 22.5T862.09-380L643-160H520Zm300-263-37-37 37 37ZM580-220h38l121-122-18-19-19-18-122 121v38Zm141-141-19-18 37 37-18-19Z" />
+        </svg>
+      </span>
+    </h1>
+    <div class="post-meta"><span title='2025-09-01 00:00:00 +0000 UTC'>September 1, 2025</span>&nbsp;·&nbsp;12 min
+
+</div>
+  </header> 
+  <div class="post-content"><h1 id="the-curious-case-of-kl-divergence">The Curious Case of KL Divergence<a hidden class="anchor" aria-hidden="true" href="#the-curious-case-of-kl-divergence">#</a></h1>
+<p>Over years, KL divergence (KLD) is something that can be found in different areas of the Machine learning world. Be it Knowledge Distillation, or Semi-Supervised learning and now even to train LLMs with Reinforcement Learning. In all of these, the goal is always to bring two distributions closer. But there is a subtle difference on how KLD is defined and used. We have Forward KL and Backward KL. In supervised learning setup, forward KL is used and in RL setup, reverse KL is used. In this article, we’ll see what Forward and Reverse KL are and what their properties are. We’ll investigate in which scenarios it makes sense to use Reverse and Forward KL and also study reasons behind them.</p>
+<h2 id="information-in-the-shannon-sense">Information (in the Shannon Sense)<a hidden class="anchor" aria-hidden="true" href="#information-in-the-shannon-sense">#</a></h2>
+<p>Let’s get a working intuition for <em>information</em> in the context of information theory. While the term is familiar in everyday language, Claude Shannon gave it a precise mathematical meaning that captures a simple but powerful insight:</p>
+<blockquote>
+<p><strong>Information measures surprise</strong> — how much uncertainty is resolved when an event occurs.</p></blockquote>
+<p>If an event is very likely, learning that it happened doesn’t teach you much. But when something <em>unlikely</em> occurs, you gain insight. That’s what Shannon formalized with the definition:</p>
+<p>$$
+I(x) = -\log_2 p(x)
+$$</p>
+<p>Here, \( p(x) \) is the probability of an event \( x \), and \( I(x) \) is the amount of information (in <strong>bits</strong>) gained by observing \( x \). The base-2 logarithm reflects the fact that we measure information in binary, in terms of how many yes/no decisions (bits) are needed to identify the outcome.</p>
+<hr>
+<h2 id="why-use--log-p--an-axiomatic-approach">Why use \( \log p \)? An Axiomatic Approach<a hidden class="anchor" aria-hidden="true" href="#why-use--log-p--an-axiomatic-approach">#</a></h2>
+<p>This formula isn’t arbitrary, but it emerges naturally from a few reasonable assumptions about how we expect information to behave. Suppose we define a function \( I(p) \) to represent the information content of an event with probability \( p \). The requirements are:</p>
+<h3 id="axiom-a1--rarity-implies-more-information">Axiom A1 — Rarity Implies More Information<a hidden class="anchor" aria-hidden="true" href="#axiom-a1--rarity-implies-more-information">#</a></h3>
+<p>The rarer an event, the more information it should convey. So \( I(p) \) should <strong>decrease</strong> as \( p \) increases.</p>
+<p>An event that is guaranteed (\( p = 1 \)) conveys <strong>no</strong> information:</p>
+<p>$$
+I(1) = 0
+$$</p>
+<h3 id="axiom-a2--additivity-for-independent-events">Axiom A2 — Additivity for Independent Events<a hidden class="anchor" aria-hidden="true" href="#axiom-a2--additivity-for-independent-events">#</a></h3>
+<p>If two independent events occur, say one with probability \( p \) and the other with \( q \), then the information gained from both should be the <strong>sum</strong> of the individual informations:</p>
+<p>$$
+I(p \cdot q) = I(p) + I(q)
+$$</p>
+<p>This is essential if we want to talk about how information accumulates across independent events (e.g. flipping a coin twice = 2 bits).</p>
+<h3 id="axiom-a3--continuity">Axiom A3 — Continuity<a hidden class="anchor" aria-hidden="true" href="#axiom-a3--continuity">#</a></h3>
+<p>The function \( I(p) \) should behave smoothly. Small changes in probability shouldn’t cause abrupt jumps in information. In other words, \( I(p) \) should be <strong>continuous</strong>.</p>
+<hr>
+<h3 id="-the-only-solution--ip---log-p-">🔑 The Only Solution: \( I(p) = -\log p \)<a hidden class="anchor" aria-hidden="true" href="#-the-only-solution--ip---log-p-">#</a></h3>
+<p>From Axiom A2, we get a functional equation:</p>
+<p>$$
+I(pq) = I(p) + I(q)
+$$</p>
+<p>The only real-valued functions on \( (0, 1] \) that satisfy this and are continuous and monotonic are of the form:</p>
+<p>$$
+I(p) = -k \log_b p
+$$</p>
+<p>The negative sign ensures that less probable events have <strong>more</strong> information. The constant \( k \) and base \( b \) simply determine the <strong>unit</strong> of measurement.</p>
+<p>If we choose base 2 (binary), and set \( k = 1 \), we get the familiar form:</p>
+<p>$$
+I(p) = -\log_2 p
+$$</p>
+<p>This measures information in <strong>bits</strong> — the amount of binary decisions needed to resolve uncertainty.</p>
+<h2 id="information-and-probability">Information and Probability<a hidden class="anchor" aria-hidden="true" href="#information-and-probability">#</a></h2>
+<p>This definition has a few intuitive properties:</p>
+<ul>
+<li>
+<p>If an event is <strong>certain</strong> (\( p = 1 \)), then:</p>
+<p>$$
+I(x) = -\log_2(1) = 0 \text{ bits}
+$$</p>
+<p>You gain nothing — it was expected.</p>
+</li>
+<li>
+<p>If an event is <strong>unlikely</strong> (e.g., \( p = 0.001 \)), then:</p>
+<p>$$
+I(x) = -\log_2(0.001) \approx 9.97 \text{ bits}
+$$</p>
+<p>Its occurrence is surprising and highly informative.</p>
+</li>
+</ul>
+<h2 id="a-guiding-example-guessing-a-number">A Guiding Example: Guessing a Number<a hidden class="anchor" aria-hidden="true" href="#a-guiding-example-guessing-a-number">#</a></h2>
+<p>Suppose I think of a number between 1 and 8, each equally likely. Then each outcome has \( p = 1/8 \), so the information from guessing correctly is:</p>
+<p>$$
+I(x) = -\log_2(1/8) = 3 \text{ bits}
+$$</p>
+<p>That makes sense: 3 yes/no questions are sufficient to identify the correct number (since \( 2^3 = 8 \)).</p>
+<p>Now, let’s say I think of a number between 1 and 1024, and you <strong>guess</strong> it correctly on the first try. That outcome had probability \( 1/1024 \), so its information content is:</p>
+<p>$$
+I(x) = -\log_2(1/1024) = 10 \text{ bits}
+$$</p>
+<p>The surprise is greater — and the informational value reflects it.</p>
+<iframe
+  src= "/entropy-explorer/information.html"
+  width="100%"
+  height="1040"
+  style="border:0"
+  loading="lazy">
+</iframe>
+<h2 id="why-not-just-use-probability">Why Not Just Use Probability?<a hidden class="anchor" aria-hidden="true" href="#why-not-just-use-probability">#</a></h2>
+<p>It&rsquo;s tempting to ask: if probability already tells us how rare an event is, why invent a new quantity?</p>
+<p>Because <strong>probability only measures uncertainty <em>before</em> an event happens</strong>. Once the event occurs, we want a measure of how much <em>uncertainty was resolved</em>. We also want this measure to:</p>
+<ul>
+<li><strong>Add up</strong> across independent events,</li>
+<li>Reflect how many binary decisions are needed, and</li>
+<li>Behave smoothly with respect to changes in probability.</li>
+</ul>
+<p>Probability can’t do this. But information can.</p>
+<h2 id="bottom-line">Bottom Line<a hidden class="anchor" aria-hidden="true" href="#bottom-line">#</a></h2>
+<ul>
+<li><strong>Monotonicity</strong>, <strong>additivity</strong>, and <strong>continuity</strong> lead us directly to \( I(x) = -\log p(x) \).</li>
+<li>The base determines the <strong>unit</strong> — base 2 gives us <strong>bits</strong>.</li>
+<li>Information isn&rsquo;t about &ldquo;amount of data&rdquo;; it&rsquo;s about <strong>how unexpected</strong> an event was, and how much it told us.</li>
+</ul>
+<p>Once you see this, information theory becomes less about abstract formulas, and more about understanding surprise, learning, and the structure of uncertainty itself.</p>
+<hr>
+<h2 id="entropy">Entropy<a hidden class="anchor" aria-hidden="true" href="#entropy">#</a></h2>
+<p>Entropy, the root of all solutions :)
+Information in previous section we focused on specific events. Entropy is the expected information over all the events.</p>
+<p>So, we try to find the expected value of a distribution.
+For a discrete <em>distribution</em> \(P\) over outcomes \(x\):</p>
+<p>$$
+H(P)=-\sum_x P(x),\log P(x).
+$$</p>
+<p>Suppose we define a random variable \(X\) representing the outcome of a fair coin toss. Naturally, we want to know: on average, how many bits are needed to encode the outcomes produced by this distribution?</p>
+<p>This is exactly what entropy measures — the expected amount of information per event drawn from a distribution.</p>
+<p>Using Shannon’s entropy formula:
+$$
+H(X)=-\sum_x p(x)\log_2 p(x)=\mathbb{E}_{X\sim p}\big[-\log_2 p(X)\big].
+$$
+where \(X\) is drawn from distribution \(P\)</p>
+<p>For a fair coin, both outcomes — heads (H) and tails (T) — have equal probability:</p>
+<p>$$
+H(X) = -[0.5 \cdot \log_2(0.5) + 0.5 \cdot \log_2(0.5)] = 0.5 \cdot 1 + 0.5 \cdot 1 = 1 \text{ bit}
+$$</p>
+<p>So the entropy of a fair coin toss is 1 bit — which aligns with our intuition: a single binary question (e.g. “Is it heads?”) is enough to fully describe the outcome.</p>
+<p>But if the coin was biased,</p>
+<p>Let’s now consider an unfair coin, where the probability of heads is much higher than tails:</p>
+<ul>
+<li>\(P(H)\) = 0.9</li>
+<li>\(P(T)\) = 0.1</li>
+</ul>
+<p>We compute:</p>
+<p>$$
+H(X) = -[0.9 \cdot \log_2(0.9) + 0.1 \cdot \log_2(0.1)]
+$$</p>
+<p>$$
+\approx -[0.9 \cdot (-0.152) + 0.1 \cdot (-3.322)]
+$$</p>
+<p>$$
+\approx 0.1368 + 0.3322 = 0.469 \text{ bits}
+$$</p>
+<p>So, the entropy of this biased coin is approximately 0.469 bits — noticeably less than 1 bit.</p>
+<p>This makes intuitive sense: if the coin lands heads 90% of the time, the outcome is more predictable. There&rsquo;s less uncertainty, and thus less information gained from each toss. You wouldn’t need a full bit to encode or transmit the result efficiently — shorter messages can take advantage of the skewed probabilities.</p>
+<p>Here is another example showing how as we become more confident of next word being <code>dog</code>, the entropy drops.</p>
+<iframe
+  src= "/entropy-explorer/entropy_explorer.html"
+  width="100%"
+  height="520"
+  style="border:0"
+  loading="lazy">
+</iframe>
+<h3 id="cross-entropy">Cross-entropy<a hidden class="anchor" aria-hidden="true" href="#cross-entropy">#</a></h3>
+<p>For distributions (P) (reference) and (Q) (model):</p>
+<p>$$
+H(P, Q);=;-\sum_x P(x),\log Q(x).
+$$</p>
+<p>Interpretation: average code length for samples from <strong>$P$</strong> if you <strong>encode as if $Q$ were true</strong>.</p>
+<ul>
+<li>If $Q=P$, then $H(P,Q)=H(P)$.</li>
+<li>If $Q$ is a poor approximation, $H(P,Q)$ is larger (you waste codelength).</li>
+</ul>
+<blockquote>
+<p><strong>Support matching</strong>: for cross-entropy (and forward KL) to be finite, you need $Q(x)&gt;0$ wherever $P(x)&gt;0$. If $P(x)&gt;0$ but $Q(x)=0$, $\log Q(x)=-\infty$.</p></blockquote>
+<hr>
+<h2 id="cross-entropy-1">Cross Entropy<a hidden class="anchor" aria-hidden="true" href="#cross-entropy-1">#</a></h2>
+<h2 id="2-kl-divergence-definition-and-derivation">2) KL Divergence: Definition and Derivation<a hidden class="anchor" aria-hidden="true" href="#2-kl-divergence-definition-and-derivation">#</a></h2>
+<h3 id="definition">Definition<a hidden class="anchor" aria-hidden="true" href="#definition">#</a></h3>
+<p>$$
+D_{\mathrm{KL}}(P|Q);=;\sum_x P(x),\log\frac{P(x)}{Q(x)}.
+$$</p>
+<h3 id="derivation-from-cross-entropy">Derivation from (cross-)entropy<a hidden class="anchor" aria-hidden="true" href="#derivation-from-cross-entropy">#</a></h3>
+<p>$$
+\begin{aligned}
+D_{\mathrm{KL}}(P|Q)
+&amp;= \sum_x P(x),\log P(x);-;\sum_x P(x),\log Q(x) \
+&amp;= \bigl[-\sum_x P(x),\log Q(x)\bigr] ;-; \bigl[-\sum_x P(x),\log P(x)\bigr] \
+&amp;= H(P, Q) ;-; H(P).
+\end{aligned}
+$$</p>
+<ul>
+<li>$H(P)$ is a <strong>constant</strong> if $P$ is fixed (e.g., teacher distribution).</li>
+<li>Minimizing $D_{\mathrm{KL}}(P|Q)$ ↔ minimizing cross-entropy $H(P,Q)$.</li>
+</ul>
+<blockquote>
+<p>KL is <strong>asymmetric</strong>: $D_{\mathrm{KL}}(P|Q)\neq D_{\mathrm{KL}}(Q|P)$. The direction matters.</p></blockquote>
+<hr>
+<h2 id="3-forward-vs-reverse-kl-behaviors-mode-covering-vs-mode-seeking">3) Forward vs. Reverse KL: Behaviors (Mode-Covering vs. Mode-Seeking)<a hidden class="anchor" aria-hidden="true" href="#3-forward-vs-reverse-kl-behaviors-mode-covering-vs-mode-seeking">#</a></h2>
+<h3 id="forward-kl-mode-covering">Forward KL (mode-covering)<a hidden class="anchor" aria-hidden="true" href="#forward-kl-mode-covering">#</a></h3>
+<p>$$
+D_{\mathrm{KL}}(P|Q)=\sum_x P(x)\log\frac{P(x)}{Q(x)}=\mathbb{E}_{x\sim P}[\log P(x)-\log Q(x)].
+$$</p>
+<ul>
+<li>Weighted by <strong>$P(x)$</strong>. If $P(x)&gt;0$ and $Q(x)\ll P(x)$, the penalty is huge.</li>
+<li>Strongly discourages <strong>missing any mass</strong> where $P$ is nonzero → <strong>mode-covering</strong>.</li>
+</ul>
+<h3 id="reverse-kl-mode-seeking">Reverse KL (mode-seeking)<a hidden class="anchor" aria-hidden="true" href="#reverse-kl-mode-seeking">#</a></h3>
+<p>$$
+D_{\mathrm{KL}}(Q|P)=\sum_x Q(x)\log\frac{Q(x)}{P(x)}=\mathbb{E}_{x\sim Q}[\log Q(x)-\log P(x)].
+$$</p>
+<ul>
+<li>Weighted by <strong>$Q(x)$</strong>. If $Q(x)=0$ somewhere $P(x)&gt;0$, that point contributes <strong>zero</strong>.</li>
+<li>Penalizes placing mass where $P\approx 0$, but not for <strong>missing</strong> modes → <strong>mode-seeking</strong>.</li>
+</ul>
+<h3 id="toy-picture-bimodal-teacher-unimodal-student">Toy picture (bimodal teacher, unimodal student)<a hidden class="anchor" aria-hidden="true" href="#toy-picture-bimodal-teacher-unimodal-student">#</a></h3>
+<ul>
+<li>
+<p>Teacher $P$: two peaks at $-3$ and $+3$.</p>
+</li>
+<li>
+<p>Student $Q$: one Gaussian.</p>
+<ul>
+<li><strong>Forward KL</strong>: inflate variance and center between peaks to <strong>cover both</strong>.</li>
+<li><strong>Reverse KL</strong>: pick <strong>one</strong> peak and ignore the other (mode-seeking).</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h2 id="4-gradients-you-actually-optimize">4) Gradients You Actually Optimize<a hidden class="anchor" aria-hidden="true" href="#4-gradients-you-actually-optimize">#</a></h2>
+<h3 id="41-forward-kl-gradient-low-variance">4.1 Forward KL gradient (low variance)<a hidden class="anchor" aria-hidden="true" href="#41-forward-kl-gradient-low-variance">#</a></h3>
+<p>$$
+\begin{aligned}
+D_{\mathrm{KL}}(P|Q_\theta)&amp;=H(P,Q_\theta)-H(P) \
+\nabla_\theta D_{\mathrm{KL}}(P|Q_\theta)
+&amp;= \nabla_\theta H(P,Q_\theta) \
+&amp;= -\sum_x P(x),\nabla_\theta \log Q_\theta(x) \
+&amp;= -\mathbb{E}<em>{x\sim P}\bigl[\nabla</em>\theta \log Q_\theta(x)\bigr].
+\end{aligned}
+$$</p>
+<ul>
+<li>Expectation under <strong>fixed</strong> $P$ → <strong>low-variance</strong>, standard cross-entropy gradient.</li>
+<li>If $Q_\theta(x)\to 0$ while $P(x)&gt;0$, $\nabla_\theta\log Q_\theta(x)=\frac{\nabla_\theta Q_\theta(x)}{Q_\theta(x)}$ blows up → <strong>strong correction</strong>. This is why forward KL <strong>covers</strong> all teacher modes.</li>
+</ul>
+<h3 id="42-reverse-kl-gradient-via-the-log-derivative-trick">4.2 Reverse KL gradient via the <strong>log-derivative trick</strong><a hidden class="anchor" aria-hidden="true" href="#42-reverse-kl-gradient-via-the-log-derivative-trick">#</a></h3>
+<p>Start with</p>
+<p>$$
+D_{\mathrm{KL}}(Q_\theta|P)=\sum_x Q_\theta(x),\bigl[\log Q_\theta(x)-\log P(x)\bigr].
+$$</p>
+<p>Differentiate:</p>
+<p>$$
+\begin{aligned}
+\nabla_\theta D
+&amp;= \sum_x \nabla_\theta Q_\theta(x),[\log Q_\theta(x)-\log P(x)]
+;+; \sum_x Q_\theta(x),\nabla_\theta\log Q_\theta(x).
+\end{aligned}
+$$</p>
+<p>Use $\sum_x \nabla_\theta Q_\theta(x)=0$ (probabilities sum to 1), so the second sum vanishes:</p>
+<p>$$
+\nabla_\theta D
+= \sum_x \nabla_\theta Q_\theta(x),[\log Q_\theta(x)-\log P(x)].
+$$</p>
+<p>Apply the <strong>log-trick</strong> $\nabla_\theta Q_\theta(x)=Q_\theta(x),\nabla_\theta\log Q_\theta(x)$:</p>
+<p>$$
+\boxed{
+\nabla_\theta D_{\mathrm{KL}}(Q_\theta|P)
+= \mathbb{E}<em>{x\sim Q</em>\theta}
+\Big[(\log Q_\theta(x)-\log P(x)),\nabla_\theta\log Q_\theta(x)\Big].
+}
+$$</p>
+<ul>
+<li>This is a <strong>REINFORCE-style</strong> estimator: you must <strong>sample from $Q_\theta$</strong>.</li>
+<li>If $Q_\theta(x)\approx 0$, that $x$ is <strong>never sampled</strong> → <strong>zero-gradient blind spot</strong>.</li>
+</ul>
+<hr>
+<h2 id="5-blind-spots-and-variance-why-reverse-kl-is-tricky">5) Blind Spots and Variance (Why Reverse KL Is Tricky)<a hidden class="anchor" aria-hidden="true" href="#5-blind-spots-and-variance-why-reverse-kl-is-tricky">#</a></h2>
+<h3 id="zero-gradient-blind-spots">Zero-gradient blind spots<a hidden class="anchor" aria-hidden="true" href="#zero-gradient-blind-spots">#</a></h3>
+<ul>
+<li>If $P(x)&gt;0$ but $Q_\theta(x)=0$, the reverse-KL gradient at $x$ is zero because you never sample that $x$ from $Q_\theta$.</li>
+<li>The student may <strong>never learn</strong> that token even though the teacher says it matters.</li>
+</ul>
+<h3 id="variance-explosion">Variance explosion<a hidden class="anchor" aria-hidden="true" href="#variance-explosion">#</a></h3>
+<ul>
+<li>Reverse-KL gradient uses random samples from an <strong>evolving</strong> student distribution and a “reward” $\log Q-\log P$ that can swing widely → <strong>high variance</strong>, needs baselines/huge batches/clipping.</li>
+<li>Forward-KL gradient samples from <strong>fixed</strong> $P$ and is just cross-entropy → <strong>low variance</strong> and <strong>sample-efficient</strong>.</li>
+</ul>
+<hr>
+<h2 id="6-knowledge-distillation-why-forward-kl-wins">6) Knowledge Distillation: Why Forward KL Wins<a hidden class="anchor" aria-hidden="true" href="#6-knowledge-distillation-why-forward-kl-wins">#</a></h2>
+<p><strong>Setup:</strong> Teacher $P(\cdot\mid\text{context})$ gives soft targets; Student $Q_\theta$ tries to match them.</p>
+<ul>
+<li><strong>Objective:</strong> minimize $D_{\mathrm{KL}}(P|Q_\theta)=H(P,Q_\theta)-H(P)$.</li>
+<li><strong>Gradient:</strong> $-\mathbb{E}<em>{x\sim P}\nabla</em>\theta\log Q_\theta(x)$.</li>
+<li><strong>Properties:</strong> stable, low-variance, <strong>mode-covering</strong> (no blind spots), trivial to implement (it’s the usual cross-entropy).</li>
+</ul>
+<blockquote>
+<p><strong>What about the entropy term $H(P)$?</strong> It’s a constant w.r.t. $\theta$ and doesn’t affect gradients—you don’t try to “increase” or “decrease” it during student training.</p></blockquote>
+<hr>
+<h2 id="7-we-only-want-task-relevant-modes-do-we-need-reverse-kl">7) “We only want task-relevant modes.” Do we need reverse KL?<a hidden class="anchor" aria-hidden="true" href="#7-we-only-want-task-relevant-modes-do-we-need-reverse-kl">#</a></h2>
+<p>Often you <strong>don’t</strong> want the student to copy <em>every</em> quirk of the teacher—you want <strong>task adaptation</strong>. You still don’t need pure reverse KL. Better options:</p>
+<ul>
+<li><strong>Filter / reweight the teacher</strong> on your task data: compute a <strong>task-conditioned teacher</strong> $P_{\text{task}}$ (e.g., mask or down-weight unwanted tokens, sharpen on desired ones) and minimize <strong>forward KL</strong> $D_{\mathrm{KL}}(P_{\text{task}}|Q)$. You retain low variance while focusing learning where it matters.</li>
+<li><strong>Temperature &amp; top-p/k</strong> on teacher outputs to emphasize salient modes, then forward-KL.</li>
+<li><strong>Focal/importance weighting</strong> of the cross-entropy.</li>
+<li><strong>α-divergences / Rényi</strong>: interpolate between mode-covering and mode-seeking without jumping to pure reverse KL.</li>
+</ul>
+<hr>
+<h2 id="8-ppo-on-a-kl-only-reward--reverse-kl-minimization">8) PPO on a KL-only reward = Reverse-KL Minimization<a hidden class="anchor" aria-hidden="true" href="#8-ppo-on-a-kl-only-reward--reverse-kl-minimization">#</a></h2>
+<p>Suppose you ignore task rewards and set the PPO reward to</p>
+<p>$$
+r(x)=\log P(x)-\log Q_\theta(x).
+$$</p>
+<p>PPO’s policy-gradient (ignoring clipping for clarity) is</p>
+<p>$$
+\nabla_\theta J=\mathbb{E}<em>{x\sim Q</em>\theta}\big[A(x),\nabla_\theta\log Q_\theta(x)\big],
+$$</p>
+<p>with $A(x)=r(x)-b$. Since $\mathbb{E}<em>{x\sim Q}[\nabla</em>\theta\log Q]=0$, the baseline term drops and</p>
+<p>$$
+\nabla_\theta J
+=\mathbb{E}<em>{x\sim Q</em>\theta}\big[(\log P(x)-\log Q_\theta(x)),\nabla_\theta\log Q_\theta(x)\big]
+= -,\nabla_\theta D_{\mathrm{KL}}(Q_\theta|P).
+$$</p>
+<p>So PPO on this reward <strong>maximizes</strong> $J$ $\Longleftrightarrow$ <strong>minimizes</strong> reverse KL. It inherits reverse-KL’s drawbacks: <strong>high variance</strong>, <strong>blind spots</strong>, <strong>mode-seeking</strong>, and <strong>lower sample-efficiency</strong> than forward-KL distillation when you already have teacher samples.</p>
+<hr>
+<h2 id="9-interpreting-the-magnitude-of-kl">9) Interpreting the Magnitude of KL<a hidden class="anchor" aria-hidden="true" href="#9-interpreting-the-magnitude-of-kl">#</a></h2>
+<ul>
+<li>$D_{\mathrm{KL}}(\cdot|\cdot)\ge 0$; it’s $0$ iff $P=Q$.</li>
+<li>Not symmetric; no triangle inequality (not a metric).</li>
+<li><strong>Forward KL large</strong> → the student <strong>underestimates</strong> regions the teacher cares about.</li>
+<li><strong>Reverse KL large</strong> → the student <strong>over-allocates</strong> mass where the teacher says probability is tiny/zero.</li>
+<li>Can be <strong>infinite</strong> if support mismatch occurs (e.g., $P(x)&gt;0$ but $Q(x)=0$ for forward KL).</li>
+</ul>
+<hr>
+<h2 id="10-applications-youll-see-in-practice">10) Applications You’ll See in Practice<a hidden class="anchor" aria-hidden="true" href="#10-applications-youll-see-in-practice">#</a></h2>
+<ul>
+<li><strong>Supervised learning</strong>: cross-entropy ⇔ minimizing $D_{\mathrm{KL}}(P|Q)$.</li>
+<li><strong>Knowledge distillation</strong>: forward KL to match teacher soft labels.</li>
+<li><strong>Variational inference</strong>: often minimize $D_{\mathrm{KL}}(Q|P)$ for tractability (mode-seeking is sometimes acceptable).</li>
+<li><strong>RL</strong>: policy updates regularized by KL to prevent large steps (e.g., TRPO/PPO).</li>
+<li><strong>VAEs</strong>: KL regularizes latent posteriors against a prior.</li>
+</ul>
+<hr>
+<h2 id="11-frequently-asked-clarifications">11) Frequently Asked Clarifications<a hidden class="anchor" aria-hidden="true" href="#11-frequently-asked-clarifications">#</a></h2>
+<ul>
+<li><strong>“Why is the reverse-KL gradient zero at $Q(x)=0$?”</strong>
+Because the gradient is an <strong>expectation under $Q$</strong>; events with $Q(x)=0$ are never sampled, contributing no gradient. (And the analytic term contains a factor $Q(x)$.)</li>
+<li><strong>“Does forward-KL have smaller gradient variance?”</strong>
+Yes—samples come from fixed $P$, and the gradient is a plain cross-entropy expectation.</li>
+<li><strong>“What if I want ‘mode-seeking’ behavior?”</strong>
+Prefer <strong>task-conditioned forward KL</strong> (filter/weight teacher) or <strong>α-divergences</strong>; avoid pure reverse KL in supervised distillation unless you accept its variance and blind-spot issues.</li>
+</ul>
+<hr>
+<h2 id="12-mini-worked-example-discrete">12) Mini Worked Example (discrete)<a hidden class="anchor" aria-hidden="true" href="#12-mini-worked-example-discrete">#</a></h2>
+<p>Teacher $P$:
+$;P(\text{A})=0.49,;P(\text{B})=0.49,;P(\text{C})=0.02.$</p>
+<p>Student init $Q$:
+$;Q(\text{A})=0.98,;Q(\text{B})=0.02,;Q(\text{C})=0.$</p>
+<ul>
+<li><strong>Forward KL</strong>: term for C is $0.02\log(0.02/0)\to\infty$ → huge gradient to increase $Q(\text{C})$. Student <strong>covers</strong> C.</li>
+<li><strong>Reverse KL</strong>: term for C is $Q(\text{C})\log(Q/P)=0\cdot(\cdot)=0$ → <strong>no gradient</strong> for C. Student can happily ignore C (mode-seeking).</li>
+</ul>
+<hr>
+<h2 id="13-summary-cheat-sheet">13) Summary Cheat-Sheet<a hidden class="anchor" aria-hidden="true" href="#13-summary-cheat-sheet">#</a></h2>
+<ul>
+<li><strong>Entropy</strong>: $H(P)=-\sum P\log P$.</li>
+<li><strong>Forward KL</strong>: $D(P|Q)=H(P,Q)-H(P)$. Low-variance gradients, <strong>mode-covering</strong>, needs <strong>support matching</strong> (finite only if $Q&gt;0$ where $P&gt;0$).</li>
+<li><strong>Reverse KL</strong>: $D(Q|P)$ with gradient
+$\mathbb{E}_{x\sim Q}[(\log Q-\log P)\nabla\log Q]$. <strong>Mode-seeking</strong>, <strong>blind spots</strong>, <strong>high variance</strong>.</li>
+<li><strong>Distillation</strong>: Use <strong>forward KL</strong> (cross-entropy). To focus on task-relevant modes, <strong>filter/weight the teacher</strong> and still use forward KL.</li>
+<li><strong>PPO on KL reward</strong>: exactly minimizes <strong>reverse KL</strong>; inherits its downsides for supervised settings.</li>
+<li><strong>Magnitude of KL</strong>: “how mismatched,” but direction matters; can be infinite with support mismatch.</li>
+</ul>
+<p>If you want, I can add a small code snippet that numerically compares gradient variance for forward vs. reverse KL on a toy problem.</p>
+
+
+  </div>
+
+  <footer class="post-footer">
+    <ul class="post-tags">
+      <li><a href="http://localhost:62573/tags/math/">Math</a></li>
+      <li><a href="http://localhost:62573/tags/information-theory/">Information-Theory</a></li>
+    </ul>
+  </footer>
+</article>
+    </main>
+    
+<footer class="footer">
+        <span>&copy; 2025 <a href="http://localhost:62573/">UG&#39;s Blog</a></span> · 
+
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://github.com/adityatelange/hugo-PaperMod/" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)" class="top-link" id="top-link" accesskey="g">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+        <path d="M12 6H0l6-6z" />
+    </svg>
+</a>
+
+<script>
+    let menu = document.getElementById('menu')
+    if (menu) {
+        menu.scrollLeft = localStorage.getItem("menu-scroll-position");
+        menu.onscroll = function () {
+            localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+        }
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    document.querySelectorAll('pre > code').forEach((codeblock) => {
+        const container = codeblock.parentNode.parentNode;
+
+        const copybutton = document.createElement('button');
+        copybutton.classList.add('copy-code');
+        copybutton.innerHTML = 'copy';
+
+        function copyingDone() {
+            copybutton.innerHTML = 'copied!';
+            setTimeout(() => {
+                copybutton.innerHTML = 'copy';
+            }, 2000);
+        }
+
+        copybutton.addEventListener('click', (cb) => {
+            if ('clipboard' in navigator) {
+                navigator.clipboard.writeText(codeblock.textContent);
+                copyingDone();
+                return;
+            }
+
+            const range = document.createRange();
+            range.selectNodeContents(codeblock);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            try {
+                document.execCommand('copy');
+                copyingDone();
+            } catch (e) { };
+            selection.removeRange(range);
+        });
+
+        if (container.classList.contains("highlight")) {
+            container.appendChild(copybutton);
+        } else if (container.parentNode.firstChild == container) {
+            
+        } else if (codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.nodeName == "TABLE") {
+            
+            codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.appendChild(copybutton);
+        } else {
+            
+            codeblock.parentNode.appendChild(copybutton);
+        }
+    });
+</script>
+</body>
+
+</html>

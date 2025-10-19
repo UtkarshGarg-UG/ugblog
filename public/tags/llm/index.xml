@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>LLM on UG&#39;s Blog</title>
+    <link>http://localhost:62573/tags/llm/</link>
+    <description>Recent content in LLM on UG&#39;s Blog</description>
+    <generator>Hugo -- 0.149.0</generator>
+    <language>en-us</language>
+    <lastBuildDate>Fri, 17 Oct 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="http://localhost:62573/tags/llm/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Building a Trustworthy LLM-as-a-Judge: A Field Guide from the Trenches</title>
+      <link>http://localhost:62573/posts/building-a-trustworthy-llm-as-a-judge-a-field-guide-from-the-trenches/</link>
+      <pubDate>Fri, 17 Oct 2025 00:00:00 +0000</pubDate>
+      <guid>http://localhost:62573/posts/building-a-trustworthy-llm-as-a-judge-a-field-guide-from-the-trenches/</guid>
+      <description>Less prompting, more statistics</description>
+    </item>
+  </channel>
+</rss>

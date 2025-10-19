@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bradley-Terry Model Interactive Demo</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            padding: 20px;
+            background: #ffffff;
+            color: #1f2937;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #111827;
+        }
+
+        .subtitle {
+            color: #6b7280;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .input-section {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .input-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #374151;
+        }
+
+        input {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #2563eb;
+        }
+
+        button:active {
+            background: #1d4ed8;
+        }
+
+        .results-section {
+            margin-top: 20px;
+        }
+
+        .iteration-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 13px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .iteration-table th {
+            background: #f9fafb;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .iteration-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .iteration-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .iteration-table tr:hover {
+            background: #f9fafb;
+        }
+
+        .final-results {
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .final-results h3 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #065f46;
+        }
+
+        .predictions {
+            display: grid;
+            gap: 10px;
+        }
+
+        .prediction-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #d1fae5;
+        }
+
+        .prediction-item:last-child {
+            border-bottom: none;
+        }
+
+        .prediction-label {
+            font-weight: 500;
+            color: #047857;
+        }
+
+        .prediction-value {
+            color: #065f46;
+            font-family: 'Courier New', monospace;
+        }
+
+        #convergencePlot {
+            margin-top: 20px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .formula {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .formula-title {
+            font-weight: 600;
+            color: #92400e;
+            margin-bottom: 8px;
+        }
+
+        .math {
+            font-family: 'Courier New', monospace;
+            color: #78350f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bradley-Terry Model: Step-by-Step</h1>
+        <p class="subtitle">Watch how the MM algorithm converges to find strength parameters from pairwise comparison data</p>
+
+        <div class="input-section">
+            <div class="input-grid">
+                <div class="input-group">
+                    <label>A beats B (out of 100):</label>
+                    <input type="number" id="aWinsB" value="65" min="0" max="100">
+                </div>
+                <div class="input-group">
+                    <label>A beats C (out of 100):</label>
+                    <input type="number" id="aWinsC" value="55" min="0" max="100">
+                </div>
+                <div class="input-group">
+                    <label>B beats C (out of 100):</label>
+                    <input type="number" id="bWinsC" value="70" min="0" max="100">
+                </div>
+            </div>
+            <button onclick="runBradleyTerry()">Run Bradley-Terry Algorithm</button>
+        </div>
+
+        <div class="formula">
+            <div class="formula-title">Update Rule (MM Algorithm):</div>
+            <div class="math">π<sub>i</sub><sup>(new)</sup> = W<sub>i</sub> / Σ<sub>j≠i</sub> [ n<sub>ij</sub> / (π<sub>i</sub><sup>(old)</sup> + π<sub>j</sub><sup>(old)</sup>) ]</div>
+            <div style="margin-top: 8px; color: #92400e;">where W<sub>i</sub> = total wins, n<sub>ij</sub> = number of comparisons between i and j</div>
+        </div>
+
+        <div class="results-section" id="results" style="display: none;">
+            <h3 style="font-size: 18px; margin-bottom: 15px;">Iteration History</h3>
+            <div style="overflow-x: auto;">
+                <table class="iteration-table" id="iterationTable">
+                    <thead>
+                        <tr>
+                            <th>Iteration</th>
+                            <th>π<sub>A</sub></th>
+                            <th>π<sub>B</sub></th>
+                            <th>π<sub>C</sub></th>
+                            <th>Max Change</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+
+            <div id="convergencePlot"></div>
+
+            <div class="final-results">
+                <h3>Final Results & Predictions</h3>
+                <div class="predictions" id="predictions"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function runBradleyTerry() {
+            // Get input values
+            const aWinsB = parseInt(document.getElementById('aWinsB').value);
+            const aWinsC = parseInt(document.getElementById('aWinsC').value);
+            const bWinsC = parseInt(document.getElementById('bWinsC').value);
+
+            const bWinsA = 100 - aWinsB;
+            const cWinsA = 100 - aWinsC;
+            const cWinsB = 100 - bWinsC;
+
+            // Total wins
+            const wA = aWinsB + aWinsC;
+            const wB = bWinsA + bWinsC;
+            const wC = cWinsA + cWinsB;
+
+            // Initialize pi values
+            let piA = 1.0, piB = 1.0, piC = 1.0;
+            const n = 100; // number of comparisons per pair
+
+            // Store iteration history
+            const history = [{
+                iteration: 0,
+                piA: piA.toFixed(3),
+                piB: piB.toFixed(3),
+                piC: piC.toFixed(3),
+                maxChange: '-'
+            }];
+
+            // Run iterations
+            const maxIterations = 15;
+            const tolerance = 0.0001;
+
+            for (let iter = 1; iter <= maxIterations; iter++) {
+                const oldPiA = piA;
+                const oldPiB = piB;
+                const oldPiC = piC;
+
+                // Update A
+                const denomA = n / (piA + piB) + n / (piA + piC);
+                const newPiA = wA / denomA;
+
+                // Update B
+                const denomB = n / (piB + piA) + n / (piB + piC);
+                const newPiB = wB / denomB;
+
+                // Update C
+                const denomC = n / (piC + piA) + n / (piC + piB);
+                const newPiC = wC / denomC;
+
+                piA = newPiA;
+                piB = newPiB;
+                piC = newPiC;
+
+                const maxChange = Math.max(
+                    Math.abs(piA - oldPiA),
+                    Math.abs(piB - oldPiB),
+                    Math.abs(piC - oldPiC)
+                );
+
+                history.push({
+                    iteration: iter,
+                    piA: piA.toFixed(3),
+                    piB: piB.toFixed(3),
+                    piC: piC.toFixed(3),
+                    maxChange: maxChange.toFixed(4)
+                });
+
+                if (maxChange < tolerance) break;
+            }
+
+            // Display results
+            displayResults(history, piA, piB, piC, aWinsB, aWinsC, bWinsC);
+        }
+
+        function displayResults(history, piA, piB, piC, aWinsB, aWinsC, bWinsC) {
+            document.getElementById('results').style.display = 'block';
+
+            // Populate table
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            history.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>Iteration ${row.iteration}</strong></td>
+                    <td>${row.piA}</td>
+                    <td>${row.piB}</td>
+                    <td>${row.piC}</td>
+                    <td>${row.maxChange}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Create convergence plot
+            const iterations = history.map(h => h.iteration);
+            const piAs = history.map(h => parseFloat(h.piA));
+            const piBs = history.map(h => parseFloat(h.piB));
+            const piCs = history.map(h => parseFloat(h.piC));
+
+            const trace1 = {
+                x: iterations,
+                y: piAs,
+                mode: 'lines+markers',
+                name: 'π_A',
+                line: { color: '#3b82f6', width: 2 },
+                marker: { size: 6 }
+            };
+
+            const trace2 = {
+                x: iterations,
+                y: piBs,
+                mode: 'lines+markers',
+                name: 'π_B',
+                line: { color: '#10b981', width: 2 },
+                marker: { size: 6 }
+            };
+
+            const trace3 = {
+                x: iterations,
+                y: piCs,
+                mode: 'lines+markers',
+                name: 'π_C',
+                line: { color: '#f59e0b', width: 2 },
+                marker: { size: 6 }
+            };
+
+            const layout = {
+                title: 'Convergence of π Values',
+                xaxis: {
+                    title: 'Iteration',
+                    dtick: 1
+                },
+                yaxis: { title: 'π Value' },
+                hovermode: 'closest',
+                height: 400,
+                margin: { t: 50, b: 50, l: 60, r: 30 },
+                font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }
+            };
+
+            Plotly.newPlot('convergencePlot', [trace1, trace2, trace3], layout, {responsive: true});
+
+            // Calculate predictions
+            const pAB = piA / (piA + piB);
+            const pAC = piA / (piA + piC);
+            const pBC = piB / (piB + piC);
+
+            const obsAB = aWinsB / 100;
+            const obsAC = aWinsC / 100;
+            const obsBC = bWinsC / 100;
+
+            const predictions = document.getElementById('predictions');
+            predictions.innerHTML = `
+                <div class="prediction-item">
+                    <span class="prediction-label">Final π<sub>A</sub>:</span>
+                    <span class="prediction-value">${piA.toFixed(3)}</span>
+                </div>
+                <div class="prediction-item">
+                    <span class="prediction-label">Final π<sub>B</sub>:</span>
+                    <span class="prediction-value">${piB.toFixed(3)}</span>
+                </div>
+                <div class="prediction-item">
+                    <span class="prediction-label">Final π<sub>C</sub>:</span>
+                    <span class="prediction-value">${piC.toFixed(3)}</span>
+                </div>
+                <div class="prediction-item">
+                    <span class="prediction-label">P(A beats B):</span>
+                    <span class="prediction-value">${(pAB * 100).toFixed(1)}% (observed: ${(obsAB * 100).toFixed(0)}%)</span>
+                </div>
+                <div class="prediction-item">
+                    <span class="prediction-label">P(A beats C):</span>
+                    <span class="prediction-value">${(pAC * 100).toFixed(1)}% (observed: ${(obsAC * 100).toFixed(0)}%)</span>
+                </div>
+                <div class="prediction-item">
+                    <span class="prediction-label">P(B beats C):</span>
+                    <span class="prediction-value">${(pBC * 100).toFixed(1)}% (observed: ${(obsBC * 100).toFixed(0)}%)</span>
+                </div>
+                <div class="prediction-item">
+                    <span class="prediction-label">Strength ratio A/B:</span>
+                    <span class="prediction-value">${(piA / piB).toFixed(2)}×</span>
+                </div>
+                <div class="prediction-item">
+                    <span class="prediction-label">Strength ratio B/C:</span>
+                    <span class="prediction-value">${(piB / piC).toFixed(2)}×</span>
+                </div>
+            `;
+        }
+
+        // Run on load with default values
+        window.onload = () => {
+            runBradleyTerry();
+        };
+    </script>
+</body>
+</html>

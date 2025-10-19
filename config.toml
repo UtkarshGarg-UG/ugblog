@@ -1,0 +1,20 @@
+baseURL = "http://localhost:1313/"
+languageCode = "en-us"
+title = "UG's Blog"
+theme = "PaperMod"
+
+# Allow raw HTML (so <iframe> works)
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+
+[params]
+  math = true              # enable KaTeX (PaperMod built-in)
+  defaultTheme = "auto"    # light/dark auto
+  showReadingTime = true
+  ShowCodeCopyButtons = true
+
+# Optional nice URLs
+[permalinks]
+  posts = "/posts/:slug/"

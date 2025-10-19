@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Positional Bias: Illusion Maker</title>
+<style>
+  :root{--bg:#fff;--fg:#0f172a;--muted:#64748b;--ring:#e2e8f0;--accent:#a855f7;--good:#10b981;--bad:#ef4444}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  .wrap{max-width:880px;margin:0 auto;padding:16px;display:grid;gap:14px}
+  h1{margin:0;font-size:18px}
+  p.sub{margin:0;color:var(--muted);font-size:13px}
+  .panel{border:1px solid var(--ring);border-radius:12px;background:#f8fafc;padding:12px}
+  .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .field{display:grid;gap:6px}
+  .field label{font-size:12px;color:var(--muted);font-weight:700}
+  input[type="range"],input[type="number"]{width:100%}
+  .val{font-weight:800}
+  .buttons{display:flex;gap:8px;flex-wrap:wrap}
+  button{padding:8px 12px;border:1px solid var(--ring);border-radius:10px;background:#fff;cursor:pointer;font-weight:800}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+  .card{background:#fff;border:1px solid var(--ring);border-radius:12px;padding:12px}
+  .card h3{margin:0 0 8px 0;font-size:14px}
+  .big{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:20px}
+  .good{color:var(--good)} .bad{color:var(--bad)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{border:1px solid var(--ring);padding:8px;text-align:center}
+  th{background:#f1f5f9}
+  .row{display:flex;justify-content:space-between;align-items:center}
+  .bar{height:10px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+  .fill{height:100%;background:linear-gradient(90deg,#60a5fa,#34d399)}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+  .note{font-size:12px;color:var(--muted)}
+  .winner{font-weight:900}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h1>Positional Bias: Illusion Maker</h1>
+    <p class="sub">See how showing one model first can make it <em>look</em> better, even when it’s actually worse—and how a simple correction fixes it.</p>
+  </div>
+
+  <!-- Controls -->
+  <div class="panel controls">
+    <div class="field">
+      <label>True advantage of A (no bias)</label>
+      <input id="pA" type="range" min="30" max="70" step="1" value="60"/>
+      <div class="val">p(A &gt; B) = <span id="pAv">60</span>%  <span class="note">(&lt;50% means B better)</span></div>
+    </div>
+    <div class="field">
+      <label>First-position halo (toward whoever is shown first)</label>
+      <input id="halo" type="range" min="0" max="30" step="1" value="15"/>
+      <div class="val"><span id="halov">15</span> pts toward FIRST</div>
+    </div>
+    <div class="field">
+      <label>AB shown (%) — A is first in AB</label>
+      <input id="mix" type="range" min="0" max="100" step="5" value="50"/>
+      <div class="val"><span id="mixv">50</span>% AB (A first)</div>
+    </div>
+    <div class="field">
+      <label># comparisons</label>
+      <input id="N" type="number" min="100" max="100000" value="5000"/>
+      <div class="val mono"><span id="Nv">5000</span></div>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button id="illusion" class="primary">🎭 Make an Illusion (B truly better, A looks better)</button>
+    <button id="simulate">Simulate</button>
+    <button id="plus">+500 more</button>
+    <button id="reset">Reset</button>
+  </div>
+
+  <!-- Winner summary -->
+  <div class="panel">
+    <table>
+      <thead>
+        <tr><th>View</th><th>Winner</th><th>p(A &gt; B)</th><th>Explanation</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Truth (configured)</b></td>
+          <td class="winner" id="trueWinner">A</td>
+          <td class="mono" id="trueP">0.600</td>
+          <td>Underlying intrinsic preference (no bias)</td>
+        </tr>
+        <tr>
+          <td><b>Naïve (ignores order)</b></td>
+          <td class="winner bad" id="naiveWinner">—</td>
+          <td class="mono bad" id="naiveP">—</td>
+          <td>Counts A’s wins overall. <em>Biased if first slot has a halo or AB:BA is imbalanced.</em></td>
+        </tr>
+        <tr>
+          <td><b>Corrected (order-aware)</b></td>
+          <td class="winner good" id="corrWinner">—</td>
+          <td class="mono good" id="corrP">—</td>
+          <td>Stratify by order: 0.5·p(A|AB) + 0.5·p(A|BA)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Tiny bars -->
+  <div class="panel">
+    <div class="row"><strong>A’s win-rate by order</strong><span class="note">excludes ties</span></div>
+    <div class="row"><span>AB (A first)</span><span id="labAB" class="mono">—</span></div>
+    <div class="bar"><div id="barAB" class="fill" style="width:0%"></div></div>
+    <div class="row" style="margin-top:8px"><span>BA (A second)</span><span id="labBA" class="mono">—</span></div>
+    <div class="bar"><div id="barBA" class="fill" style="width:0%"></div></div>
+  </div>
+
+  <!-- Diagnostics -->
+  <div class="cards">
+    <div class="card">
+      <h3>Position wins</h3>
+      <div class="row"><span>First wins</span><span id="firstWins" class="mono">—</span></div>
+      <div class="row"><span>Second wins</span><span id="secondWins" class="mono">—</span></div>
+      <div class="row"><span>Δ (First − Second)</span><span id="deltaFS" class="mono">—</span></div>
+    </div>
+    <div class="card">
+      <h3>Presentation mix</h3>
+      <div class="row"><span>AB share (A first)</span><span id="shareAB" class="mono">—</span></div>
+      <div class="row"><span>Counts: AB / BA</span><span id="counts" class="mono">—</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin:0 0 6px 0;font-size:14px">What creates the illusion?</h3>
+    <ol class="note" style="margin:0 0 0 16px">
+      <li><b>Halo:</b> The judge leans toward the <em>first</em> slot (adds <span id="haloExplain" class="mono">+0.15</span> probability to the first).</li>
+      <li><b>Imbalance:</b> If you show AB 80% of the time, A is first 80% of the time—so A benefits from the halo more often.</li>
+      <li><b>Naïve aggregation:</b> If you just count A’s wins overall, you’ll crown A—even if B was truly better.</li>
+      <li><b>Fix:</b> Report 0.5·p(A|AB) + 0.5·p(A|BA) (and log your AB:BA split).</li>
+    </ol>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  // Elements
+  const pA   = document.getElementById('pA');
+  const halo = document.getElementById('halo');
+  const mix  = document.getElementById('mix');
+  const N    = document.getElementById('N');
+  const pAv  = document.getElementById('pAv');
+  const halov= document.getElementById('halov');
+  const mixv = document.getElementById('mixv');
+  const Nv   = document.getElementById('Nv');
+
+  const illusionBtn = document.getElementById('illusion');
+  const simulateBtn = document.getElementById('simulate');
+  const plusBtn     = document.getElementById('plus');
+  const resetBtn    = document.getElementById('reset');
+
+  const trueWinner = document.getElementById('trueWinner');
+  const trueP      = document.getElementById('trueP');
+  const naiveWinner= document.getElementById('naiveWinner');
+  const naiveP     = document.getElementById('naiveP');
+  const corrWinner = document.getElementById('corrWinner');
+  const corrP      = document.getElementById('corrP');
+
+  const labAB = document.getElementById('labAB');
+  const labBA = document.getElementById('labBA');
+  const barAB = document.getElementById('barAB');
+  const barBA = document.getElementById('barBA');
+
+  const firstWins = document.getElementById('firstWins');
+  const secondWins= document.getElementById('secondWins');
+  const deltaFS   = document.getElementById('deltaFS');
+  const shareAB   = document.getElementById('shareAB');
+  const counts    = document.getElementById('counts');
+  const haloExplain = document.getElementById('haloExplain');
+
+  // State
+  let T = fresh();
+
+  function fresh(){
+    return {
+      AB:{Awin:0,Bwin:0,shown:0,firstWin:0,secondWin:0},
+      BA:{Awin:0,Bwin:0,shown:0,firstWin:0,secondWin:0}
+    };
+  }
+
+  function updLabels(){
+    pAv.textContent = pA.value;
+    halov.textContent = halo.value;
+    mixv.textContent = mix.value;
+    Nv.textContent = N.value;
+    trueP.textContent = (+pA.value/100).toFixed(3);
+    trueWinner.textContent = (+pA.value >= 50 ? 'A' : 'B');
+    haloExplain.textContent = ('+' + (+halo.value/100).toFixed(2));
+  }
+
+  const rnd = Math.random;
+  const bern = p => rnd() < p;
+
+  function step(k){
+    const p = +pA.value/100;    // intrinsic p(A>B)
+    const b = +halo.value/100;  // first-slot halo
+    const m = +mix.value/100;   // P(AB)
+
+    for(let i=0;i<k;i++){
+      const isAB = rnd() < m;    // true = A first, false = B first
+      const arm = isAB ? 'AB' : 'BA';
+      T[arm].shown++;
+
+      // base winner from intrinsic p
+      const aWouldWin = bern(p);
+
+      let winner;
+      if(isAB){
+        // A first, B second
+        if(aWouldWin){ winner='A'; }
+        else{ winner = bern(b) ? 'A' : 'B'; } // halo flips to first
+        if(winner==='A'){ T[arm].Awin++; T[arm].firstWin++; }
+        else { T[arm].Bwin++; T[arm].secondWin++; }
+      }else{
+        // B first, A second
+        if(aWouldWin){ winner = bern(b) ? 'B' : 'A'; } // halo flips to first (B)
+        else{ winner='B'; }
+        if(winner==='A'){ T[arm].Awin++; T[arm].secondWin++; }
+        else { T[arm].Bwin++; T[arm].firstWin++; }
+      }
+    }
+  }
+
+  function compute(){
+    const AB = T.AB, BA = T.BA;
+    const ABtot = AB.Awin + AB.Bwin;
+    const BAtot = BA.Awin + BA.Bwin;
+
+    const pA_AB = ABtot ? AB.Awin/ABtot : NaN;
+    const pA_BA = BAtot ? BA.Awin/BAtot : NaN;
+
+    const naiveTot = ABtot + BAtot;
+    const naive = naiveTot ? (AB.Awin + BA.Awin)/naiveTot : NaN;
+
+    // Corrected: 50:50 stratified
+    const corr = 0.5*(isNaN(pA_AB)?0:pA_AB) + 0.5*(isNaN(pA_BA)?0:pA_BA);
+
+    const first = AB.firstWin + BA.firstWin;
+    const second= AB.secondWin + BA.secondWin;
+    const posTot= first + second;
+
+    const share = (AB.shown + BA.shown) ? (AB.shown / (AB.shown + BA.shown)) : NaN;
+
+    return {pA_AB,pA_BA,naive,corr,first:posTot?first/posTot:NaN,second:posTot?second/posTot:NaN,share,ABcount:AB.shown,BAcount:BA.shown};
+  }
+
+  function render(){
+    const r = compute();
+    const fmt = x => isNaN(x) ? '—' : x.toFixed(3);
+    const pct = x => isNaN(x) ? '—' : (x*100).toFixed(1)+'%';
+
+    // order-conditioned
+    labAB.textContent = pct(r.pA_AB);
+    labBA.textContent = pct(r.pA_BA);
+    barAB.style.width = isNaN(r.pA_AB)? '0%' : (r.pA_AB*100)+'%';
+    barBA.style.width = isNaN(r.pA_BA)? '0%' : (r.pA_BA*100)+'%';
+
+    // winners
+    naiveP.textContent = fmt(r.naive);
+    corrP.textContent = fmt(r.corr);
+    naiveWinner.textContent = (r.naive >= 0.5 ? 'A' : 'B');
+    corrWinner.textContent  = (r.corr  >= 0.5 ? 'A' : 'B');
+
+    // diagnostics
+    firstWins.textContent = pct(r.first);
+    secondWins.textContent= pct(r.second);
+    deltaFS.textContent   = (isNaN(r.first) || isNaN(r.second)) ? '—' : ((r.first - r.second)*100).toFixed(1)+' pts';
+    shareAB.textContent   = pct(r.share);
+    counts.textContent    = r.ABcount + ' / ' + r.BAcount;
+  }
+
+  function reset(){
+    T = fresh();
+    render();
+  }
+
+  // Preset that creates the illusion: B truly better, A looks better
+  function illusionPreset(){
+    pA.value = 40;    // B truly better (A wins only 40%)
+    halo.value = 20;  // strong first bias
+    mix.value = 80;   // show AB (A first) most of the time
+    N.value = 5000;
+    updLabels();
+    reset();
+    step(+N.value);
+    render();
+  }
+
+  // Events
+  [pA,halo,mix,N].forEach(el=>el.addEventListener('input', ()=>{updLabels();}));
+  simulateBtn.addEventListener('click', ()=>{ reset(); step(+N.value); render(); });
+  plusBtn.addEventListener('click', ()=>{ step(500); render(); });
+  resetBtn.addEventListener('click', reset);
+  illusionBtn.addEventListener('click', illusionPreset);
+
+  // Init
+  updLabels();
+  reset();
+})();
+</script>
+</body>
+</html>

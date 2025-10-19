@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Weather Entropy Explorer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Plotly CDN -->
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" defer></script>
+  <style>
+    :root { --fg:#111; --muted:#666; --bg:#fff; --card:#f8f8f8; --accent:#2563eb; }
+    html,body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:var(--fg); background:var(--bg);}
+    .wrap { max-width: 760px; margin: 0 auto; padding: 16px 14px 32px; }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; }
+    p { color: var(--muted); margin: 0 0 16px; }
+    .panel { background: var(--card); border-radius: 14px; padding: 14px; margin: 12px 0 18px; }
+    .row { display:grid; grid-template-columns: 120px 1fr 70px; gap:10px; align-items:center; margin:10px 0; }
+    .label { font-weight: 600; }
+    input[type="range"] { width: 100%; }
+    .metrics { display:flex; gap:16px; flex-wrap:wrap; align-items:baseline; }
+    .metric { background:#fff; border-radius: 12px; padding:10px 12px; box-shadow: 0 1px 0 rgba(0,0,0,.04); }
+    .metric .v { font-size: 1.4rem; font-weight: 700; }
+    .metric .k { font-size:.85rem; color: var(--muted); }
+    .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    button { background: var(--accent); color:#fff; border:0; padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
+    button.secondary { background:#e5e7eb; color:#111; }
+    small.note { color:var(--muted); display:block; margin-top:8px; }
+    #chart { height: 300px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Weather Entropy Explorer</h1>
+    <p>Adjust the sliders (weights). They’re normalized into probabilities for Sunny/Cloudy/Rainy. Entropy updates in real time.</p>
+
+    <div class="panel" id="controls">
+      <div class="row">
+        <div class="label">Sunny</div>
+        <input id="wSunny" type="range" min="0" max="100" step="1" value="70" />
+        <div><span id="pSunny">0.70</span></div>
+      </div>
+      <div class="row">
+        <div class="label">Cloudy</div>
+        <input id="wCloudy" type="range" min="0" max="100" step="1" value="20" />
+        <div><span id="pCloudy">0.20</span></div>
+      </div>
+      <div class="row">
+        <div class="label">Rainy</div>
+        <input id="wRainy" type="range" min="0" max="100" step="1" value="10" />
+        <div><span id="pRainy">0.10</span></div>
+      </div>
+
+      <div class="btns">
+        <button id="uniform">Set Uniform (1/3 each)</button>
+        <button class="secondary" id="reset">Reset to 70/20/10</button>
+      </div>
+      <small class="note">
+        Entropy \(H(X) = -\sum_x p(x)\log_2 p(x)\). Max for 3 outcomes is \(\log_2 3 \approx 1.585\) bits.
+      </small>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="v" id="entropy">1.157</div>
+        <div class="k">Entropy (bits)</div>
+      </div>
+      <div class="metric">
+        <div class="v" id="maxEntropy">1.585</div>
+        <div class="k">Max with 3 outcomes</div>
+      </div>
+    </div>
+
+    <div id="chart"></div>
+  </div>
+
+  <script>
+    // Wait for Plotly to load
+    document.addEventListener('DOMContentLoaded', function () {
+      const wSunny  = document.getElementById('wSunny');
+      const wCloudy = document.getElementById('wCloudy');
+      const wRainy  = document.getElementById('wRainy');
+
+      const pSunny  = document.getElementById('pSunny');
+      const pCloudy = document.getElementById('pCloudy');
+      const pRainy  = document.getElementById('pRainy');
+
+      const entropyEl = document.getElementById('entropy');
+      const maxEntropyEl = document.getElementById('maxEntropy');
+
+      const uniformBtn = document.getElementById('uniform');
+      const resetBtn   = document.getElementById('reset');
+
+      const MAX_ENTROPY = Math.log2(3); // log2(3)
+      maxEntropyEl.textContent = MAX_ENTROPY.toFixed(3);
+
+      function normalize(weights) {
+        const sum = weights.reduce((a,b)=>a+b,0);
+        if (sum === 0) {
+          // Avoid division by zero: default to uniform
+          return weights.map(_ => 1/weights.length);
+        }
+        return weights.map(w => w / sum);
+      }
+
+      function entropyBits(probs) {
+        // H = -sum p log2 p, with 0 * log2 0 := 0
+        let H = 0;
+        for (const p of probs) {
+          if (p > 0) H -= p * (Math.log(p) / Math.LN2);
+        }
+        return H;
+      }
+
+      function fmtProb(p) {
+        return p.toFixed(2);
+      }
+
+      function update() {
+        const weights = [
+          Number(wSunny.value),
+          Number(wCloudy.value),
+          Number(wRainy.value)
+        ];
+        const probs = normalize(weights);
+        const [ps, pc, pr] = probs;
+
+        // Update displayed probabilities
+        pSunny.textContent  = fmtProb(ps);
+        pCloudy.textContent = fmtProb(pc);
+        pRainy.textContent  = fmtProb(pr);
+
+        // Update entropy
+        const H = entropyBits(probs);
+        entropyEl.textContent = H.toFixed(3);
+
+        // Update chart
+        drawChart(probs, H);
+      }
+
+      function drawChart(probs, H) {
+        const labels = ['Sunny','Cloudy','Rainy'];
+        const trace = {
+          x: labels,
+          y: probs,
+          type: 'bar',
+          hovertemplate: '%{x}: %{y:.3f}<extra></extra>'
+        };
+
+        const layout = {
+          margin: {l: 40, r: 20, t: 10, b: 40},
+          yaxis: {title: 'Probability', range:[0,1]},
+          xaxis: {title: ''},
+          annotations: [{
+            xref: 'paper', yref: 'paper',
+            x: 1, y: 1.05,
+            xanchor: 'right',
+            showarrow: false,
+            text: `Entropy: ${H.toFixed(3)} bits`
+          }],
+          displayModeBar: false
+        };
+
+        Plotly.react('chart', [trace], layout, {displayModeBar:false, responsive:true});
+      }
+
+      // Buttons
+      uniformBtn.addEventListener('click', () => {
+        const u = 33; // any equal values; normalization makes them 1/3 each
+        wSunny.value = u; wCloudy.value = u; wRainy.value = u;
+        update();
+      });
+
+      resetBtn.addEventListener('click', () => {
+        wSunny.value = 70; wCloudy.value = 20; wRainy.value = 10;
+        update();
+      });
+
+      // Slider listeners
+      [wSunny, wCloudy, wRainy].forEach(el => el.addEventListener('input', update));
+
+      // Initial render
+      update();
+      // Handle resizing inside iframes
+      window.addEventListener('resize', () => update());
+    });
+  </script>
+</body>
+</html>
