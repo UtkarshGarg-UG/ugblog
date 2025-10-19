@@ -768,9 +768,6 @@ This fails fast with clear errors instead of silently degrading when the model o
 - 🟡 Amber: 1-2× acceptance band → review rubric for ambiguity
 - 🔴 Red: >2× acceptance band → judge too stochastic or rubric severely under-specified
 
-![A/A test dashboard with acceptance bands](/llm-judge/aa-test-dashboard.png)
-*Figure 11: A/A test results dashboard. Pass-rate delta of 1.5pp is within the 2pp acceptance band (green), indicating good judge stability.*
-
 **Large divergence signals problems:**
 - The judge is too stochastic → lower temperature, use majority vote
 - The rubric is under-specified → tighten criteria definitions
@@ -801,7 +798,7 @@ This is why building a trustworthy LLM judge isn't about prompt engineering; it'
 
 The good news is that once you build with this discipline, you get something genuinely valuable: a judge that produces consistent, auditable judgments. One where you can trace every decision back to specific evidence and criteria. One that tells you when it's unreliable, where your rubric has gaps, and which test cases need human review. One you can iterate on with actual confidence.
 
-The process looks like this in practice: start with binary rubrics and structured analyses. Instrument with gold sets, bootstrap confidence intervals, and A/A tests. Read the judge's reasoning on failures systematically, not just when results surprise you, but as a regular part of your workflow. Refine your specifications based on what you learn. Version everything so you can reproduce results months later when someone asks "why did we make that call?"
+The process looks like this in practice: start with binary rubrics and structured analyses. Instrument with gold sets, correlation metrics (Pearson's r, Spearman's ρ), bootstrap confidence intervals, and A/A tests. Track per-criterion entropy to identify unstable criteria. Read the judge's reasoning on failures systematically, not just when results surprise you, but as a regular part of your workflow—especially where the judge disagrees with human labels, as these divergences reveal rubric gaps. Refine your specifications based on what you learn. Version everything so you can reproduce results months later when someone asks "why did we make that call?"
 
 It's iterative, unglamorous work. You'll spend more time reading judge analyses than writing prompts. You'll rebuild rubrics multiple times before they measure what you actually care about. You'll catch yourself making claims about "5% improvements" that disappear when you look at confidence intervals or slice by difficulty.
 
