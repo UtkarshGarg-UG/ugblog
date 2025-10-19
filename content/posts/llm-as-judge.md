@@ -1,7 +1,7 @@
 ---
 title: "Building a Trustworthy LLM-as-a-Judge: A Field Guide from the Trenches"
 date: 2025-10-17
-draft: false
+draft: true
 math: true
 summary: "Less prompting, more statistics"
 tags: ["LLM", "LLM-as-Judge"]
@@ -21,6 +21,8 @@ The problem wasn't the judge. It was my metric definition. I'd been too precise 
 This is why building an LLM-as-a-Judge isn't about writing a clever prompt. **It's about building a reliable evaluation framework**, one with clear specifications, auditable reasoning, statistical rigor, and experimental discipline. After building multiple benchmarks driven by LLM-as-judge evals, I've learned that the difference between a flaky experiment and a trustworthy measurement comes down to treating evaluation as a science experiment, not a prompt-engineering exercise.
 
 The metric you write on day one is never the metric you need. You discover what you're really measuring by reading hundreds of judge justifications and watching it fail in surprising ways. This is a field guide for building LLM judges that produce valid, reproducible results, not just on cherry-picked examples, but across thousands of diverse inputs that actually represent the problem you're trying to solve.
+
+**TL;DR:** This is a long, comprehensive guide. If you're short on time, **at minimum read the 19 numbered tips** scattered throughout (they're in blockquotes). Each tip is a hard-won lesson that will save you from common pitfalls. The full text provides the reasoning and examples, but the tips alone will dramatically improve your LLM-as-a-judge implementations.
 
 ---
 
