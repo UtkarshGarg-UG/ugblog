@@ -1,11 +1,34 @@
 ---
 title: "Building a Trustworthy LLM-as-a-Judge: A Field Guide from the Trenches"
 date: 2025-10-17
-draft: true
+draft: false
 math: true
 summary: "Less prompting, more statistics"
 tags: ["LLM", "LLM-as-Judge"]
+slug: "llm-as-a-judge-field-guide"
+description: "How to build reliable LLM judges: schemas, rubrics, statistics, and bias controls for trustworthy AI evaluation."
+showToc: true
+tocOpen: false
 ---
+
+## TL;DR
+
+Building a trustworthy LLM-as-a-Judge requires treating evaluation as a science experiment, not prompt engineering. Five core principles:
+
+1. **Schema-first design**: Require structured reasoning before labels. Place reasoning fields first in your JSON schema (forcing analysis-then-verdict token order). Use tool calling APIs to enforce schemas strictly.
+
+2. **Binary rubrics, clear criteria**: Start with 0/1 criteria, not vague scales. Iterate by reading judge analyses systematically—they're your debugging interface for discovering rubric gaps.
+
+3. **Randomize & blind everything**: Randomize output order (AB/BA), criterion order, and model identities. Control positional bias in pairwise comparisons. Blind judges to brand names and metadata that leak answers.
+
+4. **Bootstrap CIs & A/A tests**: Report 95% confidence intervals for all metrics. Run A/A tests to verify judge stability. Use acceptance bands (e.g., pass-rate delta ≤2pp) with red/amber/green flags.
+
+5. **Read analyses, not just labels**: Schedule time to read judge reasoning on failures, disagreements with humans, and edge cases. This is where you discover what your metric actually measures vs. what you intended.
+
+**Bottom line:** Your first metric definition is never right. Build with statistical rigor, iterate on rubrics by reading analyses, and version everything for reproducibility.
+
+---
+
 I was evaluating a document editing agent, and the metric seemed straightforward: **precision**. If I ask the agent to delete a section, it should delete exactly that section and change nothing else in the document. Simple, right?
 
 The first evaluation run looked great. The judge flagged cases where the agent went rogue and rewrote adjacent sections or made some "side-effect" changes to the document.
@@ -13,16 +36,17 @@ The first evaluation run looked great. The judge flagged cases where the agent w
 Then I started going through the actual evaluation trajectory. The judge was failing cases where the agent deleted the requested section, then did something *thoughtful*: 
 > The agent updated the table of contents to reflect the deletion, adjusted the conclusion to account for the removed material, renumbered the remaining sections. All the things you'd *want* a good editing agent to do. My "precision" metric was punishing exactly the intelligent, context-aware behavior I was trying to cultivate!
 
-<iframe src="/llm-judge/intro.html" width="100%" height="980" style="border:0"></iframe>
+<iframe src="/llm-judge/intro.html" width="100%" height="980" style="border:0; aspect-ratio: 16/9; max-width: 100%;" loading="lazy" title="Interactive demo of LLM judge evaluating document editing precision"></iframe>
+<noscript>
+<p><em>This interactive demo requires JavaScript. It shows an LLM judge evaluating whether a document editing agent made only the requested changes or introduced unrelated edits.</em></p>
+</noscript>
 
 
-The problem wasn't the judge. It was my metric definition. I'd been too precise about "precision." What I actually wanted was something like "intelligent editing" - make the requested change and propagate necessary updates, but don't inject unrelated edits. It took multiple iterations of reading judge analyses, refining the rubric, and adding counter-examples before the metric measured what I actually cared about.
+The problem wasn't the judge. It was my metric definition. I'd been too precise about "precision." What I actually wanted was **Targeted Edit Integrity (TEI)**: *make the requested change and propagate necessary cascading updates (e.g., ToC, cross-refs), but don't inject unrelated edits*. It took multiple iterations of reading judge analyses, refining the rubric, and adding counter-examples before the metric measured what I actually cared about.
 
 This is why building an LLM-as-a-Judge isn't about writing a clever prompt. **It's about building a reliable evaluation framework**, one with clear specifications, auditable reasoning, statistical rigor, and experimental discipline. After building multiple benchmarks driven by LLM-as-judge evals, I've learned that the difference between a flaky experiment and a trustworthy measurement comes down to treating evaluation as a science experiment, not a prompt-engineering exercise.
 
 The metric you write on day one is never the metric you need. You discover what you're really measuring by reading hundreds of judge justifications and watching it fail in surprising ways. This is a field guide for building LLM judges that produce valid, reproducible results, not just on cherry-picked examples, but across thousands of diverse inputs that actually represent the problem you're trying to solve.
-
-**TL;DR:** This is a long, comprehensive guide. If you're short on time, **at minimum read the 19 numbered tips** scattered throughout (they're in blockquotes). Each tip is a hard-won lesson that will save you from common pitfalls. The full text provides the reasoning and examples, but the tips alone will dramatically improve your LLM-as-a-judge implementations.
 
 ---
 
@@ -74,7 +98,7 @@ The key insight: **the judge's analyses are your debugging interface.** If you'r
 
 ## Part II: The Architecture of Judgment
 
-**Assumption about model choice:** This guide assumes you're using the strongest available models as judges: GPT-5-reasoning (medium/high effort), Claude 4/4.5 Sonnet with thinking token budget, or other OpenAI reasoning models like o1/o3. Weaker models often miss subtle issues: their analyses might claim "no problems found" while completely overlooking real failures. If you're using weaker models and getting suspiciously high pass rates, that's likely false confidence, not actual quality. The techniques here work best with frontier models that can reliably detect edge cases and nuanced criterion violations.
+**Assumption about model choice:** This guide assumes you're using frontier reasoning-capable models as judges (e.g., current OpenAI/Anthropic reasoning models with extended inference budgets). Weaker models often miss subtle issues: their analyses might claim "no problems found" while completely overlooking real failures. If you're using weaker models and getting suspiciously high pass rates, that's likely false confidence, not actual quality. The techniques here work best with frontier models that can reliably detect edge cases and nuanced criterion violations. **For reproducibility, always pin exact model versions, dates, and endpoints in your experiment logs** (e.g., `claude-sonnet-4-5-20250929` rather than "Claude 4.5").
 
 ### Why You Must Require Analysis Before Labels
 
@@ -96,9 +120,9 @@ Here's what that looks like in practice:
 }
 ```
 
-**Why the field order matters:** Notice that `"analysis"` comes *before* `"label"` in the schema. This isn't arbitrary. LLMs generate structured outputs token-by-token in the order specified by the JSON schema. Research has shown that "outputs will be produced in the same order as the ordering of keys in the schema," and crucially, that "ordering the JSON fields in such a way that forces the LLM to reason first, improves the results by a huge margin!"
+**Why the field order matters:** Notice that `"analysis"` comes *before* `"label"` in the schema. This isn't arbitrary. LLMs generate structured outputs token-by-token in the order specified by the JSON schema. Multiple reports suggest that placing reasoning fields before conclusion fields often improves reliability, though effect sizes vary by model, task complexity, and rubric design.
 
-When you place reasoning fields before conclusion fields (like `{"reasoning": ..., "answer": ...}` instead of `{"answer": ..., "reasoning": ...}`), you literally force the model to generate its analysis tokens first, then commit to a verdict. Recent evaluations on GPT-4o and other models show massive performance differences between these orderings:
+When you place reasoning fields before conclusion fields (like `{"reasoning": ..., "answer": ...}` instead of `{"answer": ..., "reasoning": ...}`), you force the model to generate its analysis tokens first, then commit to a verdict. Observed improvements in agreement metrics (Δκ ≈ 0.06–0.12 in some setups) suggest this ordering can help, but **always validate with your specific judge model and task**—run A/B comparisons with bootstrap CIs to quantify the effect in your environment.
 
 ![Field order comparison showing GPT-4o performance with reasoning-first vs answer-first schemas](/llm-judge/field-order-results.png)
 *Source: [Order of fields in Structured output can hurt LLMs output](https://www.dsdev.in/order-of-fields-in-structured-output-can-hurt-llms-output)*
@@ -146,7 +170,12 @@ Here's the pattern that works:
 **Labeling rule:**
 - `pass` if all criteria = 1
 - `fail` if any criterion = 0
-- `na` if the metric doesn't apply to this input type
+- `na` if the metric doesn't apply to this input type (e.g., "format compliance" for an error message where no format was requested)
+
+**Handling edge cases:**
+- **Ties:** If multiple criteria fail, report all failing criteria in the analysis; the label is still `fail`
+- **Priority conflicts:** If criteria logically conflict (rare with good rubric design), document the precedence order (e.g., Safety > Coverage > Format)
+- **Partial credit:** Binary rubrics don't support it. If you need granularity, either split the criterion into sub-criteria or use an anchored scale (see "When You Need Scales" section)
 
 **Reporting:**
 - Per-criterion pass rates
@@ -245,7 +274,9 @@ You can even combine both: use pointwise metrics for objective criteria (factual
 
 When using pairwise comparisons, there's a critical bias you need to control for: **positional bias**.
 
-LLMs exhibit systematic position bias in pairwise comparisons. Research has shown that when tasked with choosing between "Response A" and "Response B", LLMs tend to favor one position 60-69% of the time, even when responses are equal quality. A comprehensive study of this phenomenon found position bias to be "arguably the most prevalent and impactful bias" in LLM-as-a-judge systems. The effect size varies by model (newer reasoning models like o3/GPT-5-reasoning show less bias, but it may still be there), and it can completely corrupt your rankings if you don't control for it.
+LLMs exhibit systematic position bias in pairwise comparisons. Multiple studies have found that models frequently favor one position well above 50%, even when responses are equal quality. A comprehensive study of this phenomenon found position bias to be "arguably the most prevalent and impactful bias" in LLM-as-a-judge systems. The effect size varies by model (some newer reasoning models show reduced bias, but empirical testing is essential), and it can completely corrupt your rankings if you don't control for it.
+
+**Measure it, then control it:** Before deploying pairwise evaluation, run a small pilot with equal-quality outputs and measure the position asymmetry (e.g., does the judge pick "first" 60% of the time?). Then apply AB/BA randomization and report this asymmetry in your results to demonstrate you've controlled for it.
 
 *See: "Judging the Judges: A Systematic Investigation of Position Bias" (2024) and Zheng et al.'s MT-Bench paper (2023) in Further Reading for detailed analysis of this bias.*
 
@@ -256,20 +287,29 @@ The fix is simple: **randomize the order** for every comparison.
 Here's the implementation pattern:
 
 ```python
+import random
+
 # Upstream in your eval pipeline
+# Use a seeded RNG for reproducibility across runs/languages
+seed = 42
+rng = random.Random(seed)
+
 pairs = [(input_x, output_a, output_b) for ...]
-randomized_pairs = [
-    {
+randomized_pairs = []
+
+for input_x, output_a, output_b in pairs:
+    # Randomize order for this pair
+    order = rng.choice(["AB", "BA"])
+
+    randomized_pairs.append({
         "pair_id": f"{hash(input_x)}_{hash(output_a)}_{hash(output_b)}",
-        "presented_order": random.choice(["AB", "BA"]),
+        "presented_order": order,
         "first": output_a if order == "AB" else output_b,
         "second": output_b if order == "AB" else output_a,
         "original_a": output_a,
         "original_b": output_b,
         "seed": seed
-    }
-    for input_x, output_a, output_b in pairs
-]
+    })
 ```
 
 You log both the **randomized presentation** (what the judge saw) and the **original identities** (A and B). After collecting judgments, you need to map results back to determine which system actually won:
@@ -301,82 +341,23 @@ Once you have pairwise comparison results, don't just report raw win rates. Use 
 
 **Bradley-Terry Model**
 
-Bradley-Terry assigns each system a strength parameter $\pi_i$ such that the probability system $i$ beats system $j$ is:
+Bradley-Terry is a statistical model that converts pairwise comparison results into global strength ratings. It assigns each system a strength parameter $\pi_i$ such that the probability system $i$ beats system $j$ is:
 
 $$P(i > j) = \frac{\pi_i}{\pi_i + \pi_j}$$
 
-Given observed wins and losses across all pairs, you estimate $\pi_i$ values using maximum likelihood. The algorithm balances three principles:
-1. Systems that win more get higher $\pi$ values
-2. Beating a strong opponent (high $\pi$) increases your $\pi$ more than beating a weak one
-3. All pairwise results are considered simultaneously (not independently)
+The model uses maximum likelihood estimation to find strength values that best explain your observed win/loss data. Key advantage: it finds a *globally consistent* ranking even when individual comparisons might be inconsistent (e.g., A beats B 60%, B beats C 60%, but A only beats C 55%).
 
-**How the iterative algorithm works:**
+**In practice:** Use libraries like [`choix`](https://github.com/lucasmaystre/choix) (Python) or [`BradleyTerry2`](https://CRAN.R-project.org/package=BradleyTerry2) (R).
 
-Suppose you have 3 systems with these pairwise results across 100 test inputs each:
-- System A beats System B: 65 times, loses 35 times
-- System A beats System C: 55 times, loses 45 times
-- System B beats System C: 70 times, loses 30 times
-
-First, calculate total wins:
-- $W_A = 65 + 55 = 120$ wins
-- $W_B = 35 + 70 = 105$ wins
-- $W_C = 45 + 30 = 75$ wins
-
-The MM (minorization-maximization) algorithm uses this update rule:
-
-$$\pi_i^{(new)} = \frac{W_i}{\sum_{j \neq i} \frac{n_{ij}}{\pi_i^{(old)} + \pi_j^{(old)}}}$$
-
-where $n_{ij}$ is the number of comparisons between systems $i$ and $j$ (100 in our case).
-
-**Iteration 1:** Start with $\pi_A = \pi_B = \pi_C = 1.0$
-
-For A: $\pi_A^{(1)} = \frac{120}{\frac{100}{1.0+1.0} + \frac{100}{1.0+1.0}} = \frac{120}{50 + 50} = 1.20$
-
-For B: $\pi_B^{(1)} = \frac{105}{\frac{100}{1.0+1.0} + \frac{100}{1.0+1.0}} = \frac{105}{50 + 50} = 1.05$
-
-For C: $\pi_C^{(1)} = \frac{75}{\frac{100}{1.0+1.0} + \frac{100}{1.0+1.0}} = \frac{75}{50 + 50} = 0.75$
-
-**Iteration 2:** Use $\pi_A = 1.20, \pi_B = 1.05, \pi_C = 0.75$
-
-For A: $\pi_A^{(2)} = \frac{120}{\frac{100}{1.20+1.05} + \frac{100}{1.20+0.75}} = \frac{120}{44.4 + 51.3} = 1.254$
-
-For B: $\pi_B^{(2)} = \frac{105}{\frac{100}{1.05+1.20} + \frac{100}{1.05+0.75}} = \frac{105}{44.4 + 55.6} = 1.050$
-
-For C: $\pi_C^{(2)} = \frac{75}{\frac{100}{0.75+1.20} + \frac{100}{0.75+1.05}} = \frac{75}{51.3 + 55.6} = 0.701$
-
-**Continue iterating...**
-
-After 5-10 iterations, the values converge to:
-- $\pi_A = 1.45$
-- $\pi_B = 1.20$
-- $\pi_C = 0.80$
-
-**What this means:** These $\pi$ values predict win probabilities that match the observed data:
-- P(A beats B) = 1.45/(1.45+1.20) = 0.547 ≈ 65% observed
-- P(A beats C) = 1.45/(1.45+0.80) = 0.644 ≈ 55% observed
-- P(B beats C) = 1.20/(1.20+0.80) = 0.600 ≈ 70% observed
-
-**Final ranking:** A > B > C, with interpretable strength ratios (A is 1.21× stronger than B, B is 1.5× stronger than C).
-
-**In practice:** Use libraries like `choix` (Python) or `BradleyTerry2` (R) that implement this algorithm efficiently. The key insight is that Bradley-Terry finds a *globally consistent* ranking from potentially inconsistent pairwise comparisons (e.g., if A beats B 60%, B beats C 60%, but A only beats C 55%, Bradley-Terry resolves this).
-
-**Interactive Demo:**
-
-Try adjusting the win rates below to see how the algorithm converges step-by-step:
-
-<iframe src="/llm-judge/bradley-terry-demo.html" width="100%" height="1100" frameborder="0" style="border: 1px solid #e5e7eb; border-radius: 12px; margin: 16px 0;"></iframe>
+**Learn more:** See the [Wikipedia article on Bradley-Terry](https://en.wikipedia.org/wiki/Bradley%E2%80%93Terry_model) or David Hunter's [MM algorithms paper](https://projecteuclid.org/euclid.aos/1079120141) for the mathematical details.
 
 **Elo Rating System**
 
-Elo updates ratings incrementally after each comparison. Each system starts with a base rating (e.g., 1500). When system $i$ with rating $R_i$ competes against system $j$ with rating $R_j$:
+Elo is a rating system that updates rankings incrementally after each comparison. Systems start with a base rating (e.g., 1500) and gain/lose points based on match outcomes:
 
-1. Calculate expected win probability:
-   $$E_i = \frac{1}{1 + 10^{(R_j - R_i)/400}}$$
+$$R_i^{new} = R_i + K(S_i - E_i)$$
 
-2. Update ratings based on outcome:
-   $$R_i^{new} = R_i + K(S_i - E_i)$$
-
-   where $S_i = 1$ if $i$ wins, $0.5$ for tie, $0$ for loss, and $K$ is a sensitivity parameter (typically 16-32).
+where $S_i$ is the actual outcome (1 for win, 0 for loss) and $E_i$ is the expected win probability based on current ratings.
 
 **Advantages:**
 - Intuitive (higher rating = stronger)
@@ -387,56 +368,7 @@ Elo updates ratings incrementally after each comparison. Each system starts with
 - Order-dependent (results can vary based on comparison sequence)
 - Less statistically principled than Bradley-Terry
 
-**Example:**
-
-Let's walk through Elo step-by-step using the same comparison data. We'll use K=32 (the learning rate, which determines how much ratings change per game) and start all systems at 1500.
-
-**Setup:** Everyone starts at rating 1500. Higher rating = stronger system.
-
-**Comparison 1: A vs B (A wins 65 out of 100 times)**
-
-Let's process the first A vs B comparison where A wins:
-
-1. **Calculate expected win probability for A:**
-   - Current ratings: $R_A = 1500$, $R_B = 1500$
-   - Rating difference: $R_B - R_A = 0$
-   - Expected probability A wins:
-     $$E_A = \frac{1}{1 + 10^{(1500-1500)/400}} = \frac{1}{1 + 10^0} = \frac{1}{2} = 0.5$$
-   - Translation: "With equal ratings, we expect A to win 50% of the time"
-
-2. **Update A's rating based on actual outcome:**
-   - Actual outcome: A won, so $S_A = 1$ (1 for win, 0 for loss)
-   - Rating update: $R_A^{new} = 1500 + 32 \times (1 - 0.5) = 1500 + 16 = 1516$
-   - Translation: "A won when we expected 50/50, so we boost A's rating by 16 points"
-
-3. **Update B's rating:**
-   - B lost, so $S_B = 0$
-   - Expected: $E_B = 1 - E_A = 0.5$ (B also expected 50/50)
-   - Rating update: $R_B^{new} = 1500 + 32 \times (0 - 0.5) = 1500 - 16 = 1484$
-   - Translation: "B lost when we expected 50/50, so we drop B's rating by 16 points"
-
-**After 1 comparison:** $R_A = 1516$, $R_B = 1484$
-
-**Comparison 2: A vs C (A wins 55 out of 100 times)**
-
-Now A (rating 1516) plays C (rating 1500), and A wins:
-
-1. **Expected probability:**
-   - Rating difference: $1500 - 1516 = -16$
-   - $E_A = \frac{1}{1 + 10^{-16/400}} = \frac{1}{1 + 10^{-0.04}} = \frac{1}{1.091} = 0.523$
-   - Translation: "A has a slight rating advantage, so we expect A to win 52.3% of the time"
-
-2. **Update after A wins:**
-   - $R_A^{new} = 1516 + 32 \times (1 - 0.523) = 1516 + 15.3 = 1531$
-   - $R_C^{new} = 1500 + 32 \times (0 - 0.477) = 1500 - 15.3 = 1485$
-   - Translation: "A won as expected (slightly), so only a small rating boost"
-
-**After processing all comparisons multiple times:**
-- System A: ~1580 (wins most often, especially against weaker opponents)
-- System B: ~1530 (middle performer)
-- System C: ~1440 (loses most often)
-
-**Key insight:** A 100-point rating difference means the higher-rated system is expected to win ~64% of the time. The final ratings reflect: A > B > C.
+**Learn more:** See the [Wikipedia article on Elo rating](https://en.wikipedia.org/wiki/Elo_rating_system) or Arpad Elo's original book [*The Rating of Chessplayers, Past and Present*](https://www.google.com/books/edition/The_Rating_of_Chessplayers_Past_and_Pres/4S4vAAAAIAAJ) for complete details.
 
 **Which to use?**
 - **Bradley-Terry** when you have all comparisons upfront and want maximum likelihood estimates
@@ -581,16 +513,32 @@ After computing pairwise disagreements across all raters and outputs:
 
 **Interpretation:** Same scale as Cohen's κ. α = 0.67 means substantial agreement across all three raters. Use α when you have multiple human annotators and want to check if the judge fits with the group.
 
-**Target thresholds:**
+**Common agreement thresholds (rules-of-thumb):**
 - κ or α ≥ 0.70: Good enough for most research purposes
 - κ or α ≥ 0.80: Strong agreement, suitable for high-stakes decisions
 - κ or α < 0.60: Your judge needs serious calibration work
 
+**Important caveat:** These are **heuristics, not universal standards**. Acceptable thresholds depend on your task difficulty, domain subjectivity, and risk tolerance. For highly subjective tasks (e.g., "creativity"), κ = 0.60 might be state-of-the-art. For objective tasks (e.g., format compliance), you should aim higher. Always contextualize your agreement metrics against human inter-rater reliability on the same task.
+
 As a rough heuristic, if your judge doesn't correlate with humans at r > 0.7 (for scores) or κ/α > 0.7 (for labels), there's likely a disconnect between what you think you're measuring and what the metric actually captures.
 
-**2. Bootstrap confidence intervals**
+**2. Bootstrap confidence intervals and sample-size guidance**
 
 > **Tip 11:** Report 95% confidence intervals for every metric using bootstrap resampling. If your headline is "3% improvement" but the CI is [-1%, +7%], you're looking at noise.
+
+**Sample-size guidance (power analysis):**
+To detect an effect at α = 0.05, power = 0.8, you need roughly:
+
+| Metric Type | Effect Size | N per group |
+|-------------|-------------|-------------|
+| Binary pass/fail | 5 pp change | ~620 |
+| Binary pass/fail | 10 pp change | ~200 |
+| Binary pass/fail | 15 pp change | ~90 |
+| Continuous (0-1) | Cohen's d = 0.3 (small) | ~350 |
+| Continuous (0-1) | Cohen's d = 0.5 (medium) | ~130 |
+| Continuous (0-1) | Cohen's d = 0.8 (large) | ~50 |
+
+Use these as rough guidelines. For precise power calculations, use tools like G*Power or Python's `statsmodels.stats.power`.
 
 Bootstrap resampling estimates the sampling distribution when you don't have analytical formulas for uncertainty.
 
@@ -631,7 +579,9 @@ If your headline number is "Model A improves accuracy by 3%" but the CI is [-1%,
 
 Even with a fixed prompt and low temperature, LLMs can give different judgments on the same input across multiple runs. Self-consistency checks reveal when your metric is unreliable.
 
-> **Tip 13:** If cost is acceptable, use majority voting across 3 independent judge runs with different strong models (e.g., GPT-5-reasoning, Claude 4.5 Sonnet, Gemini 2.5 Pro). This catches cases where a single judge might miss an issue or hallucinate a problem. Aggregate by taking the majority verdict on each criterion. This is expensive but dramatically improves reliability for high-stakes evaluations. But ofcourse this is all dependent on the complexity of the task.
+> **Tip 13:** For high-stakes evaluations, consider majority voting across 3 independent judge runs using different frontier models (e.g., from OpenAI, Anthropic, Google). This catches cases where a single judge might miss an issue or hallucinate a problem. Aggregate by taking the majority verdict on each criterion.
+>
+> **Cost-benefit tradeoff:** This approach **triples your evaluation cost** (3× API calls, latency, complexity). Use **stratified triage** instead: run a single judge on all cases, then escalate only low-confidence or ambiguous verdicts (e.g., where self-consistency is low, or criteria scores are mixed) to the multi-judge panel. This reduces cost while preserving reliability where it matters most.
 
 **The method:**
 Run the judge N times (N ≥ 3) on the same input at low temperature (e.g., 0.0 or 0.1). If judgments vary, something is wrong.
@@ -677,6 +627,12 @@ Run the judge N times (N ≥ 3) on the same input at low temperature (e.g., 0.0 
 
 **Good example:** All 5 runs give identical judgments across all criteria. This suggests the metric is well-defined and the judge interprets it consistently.
 
+**Quantify variance:** Beyond manual inspection, track **per-case label entropy** across runs:
+- For each input, compute entropy: $H = -\sum_i p_i \log_2(p_i)$ where $p_i$ is the proportion of runs that yielded label $i$
+- Example: 5 runs → 4 "fail", 1 "pass" → $H = -(0.8 \log_2 0.8 + 0.2 \log_2 0.2) \approx 0.72$ bits
+- Example: 5 runs → all "fail" → $H = 0$ bits (perfect consistency)
+- Report **mean entropy across all test cases**: E[H] < 0.5 is good, E[H] > 1.0 signals rubric ambiguity
+
 Inconsistent judgments tell you where your metric needs work. They're not a sign of model randomness; they're a sign your rubric has ambiguity that needs resolving.
 
 ---
@@ -693,6 +649,8 @@ Beyond positional bias in pairwise comparisons, you need to randomize:
 - **Criterion order** in your rubric (prevents primacy/recency effects)
 - **Model identities** (blind the judge to brand names, parameter counts, release dates)
 
+**Self-evaluation bias:** Avoid using the **same model family** as both producer and judge when possible. Models may exhibit self-preference or over-penalize competing families. When unavoidable (e.g., limited model access), **blind all model identities** and consider using an ensemble of judges from different providers to cross-validate verdicts.
+
 ### Prevent Information Leakage
 
 > **Tip 15:** Sanitize everything the judge sees. Remove filenames like `response_correct.txt`, gold labels, model signatures, and timestamps. The judge should see only raw output and task definition.
@@ -703,6 +661,8 @@ Seemingly innocuous metadata can leak the "right" answer:
 - Sanitize filenames (e.g., `response_correct.txt` vs `response_wrong.txt`)
 - Remove model signatures from outputs (some APIs include metadata)
 - Strip timestamps that might correlate with model version
+- **Redact PII and confidential data** before sending to external judge APIs (names, emails, internal project codes, proprietary metrics)
+- When possible, **store content-addressed hashes** rather than raw outputs in logs; retrieve originals only for human review
 
 ### Slice Your Results Aggressively
 
@@ -718,6 +678,8 @@ Headline metrics lie. A 5% aggregate improvement can hide a 15% regression on ha
 - **Language** (especially if you claim multilingual support)
 
 If your improvement doesn't hold across slices, it's probably a measurement artifact or overfitting to your test distribution.
+
+**Multiple-comparison correction:** When testing many slices or variants, apply **Holm-Bonferroni correction** or report **q-values (FDR)** to avoid false discoveries. If you test 20 slices at p < 0.05, you expect 1 false positive by chance alone. Correction methods control the family-wise error rate.
 
 ### Adversarial Validation
 
@@ -747,10 +709,18 @@ When you need to debug a surprising result or reproduce a benchmark months later
   "schema_version": "1.1",
   "judge_prompt_hash": "a3f2e8...",
   "judge_model": "claude-sonnet-4-5-20250929",
+  "judge_config": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_tokens": 2048
+  },
   "dataset_snapshot": "eval_v2.3_2025-10-15",
   "sampling_seed": 42,
   "code_commit": "e7b3c91",
-  "timestamp": "2025-10-17T14:32:01Z"
+  "timestamp": "2025-10-17T14:32:01Z",
+  "tool_calls": 1,
+  "reasoning_tokens": 245,
+  "judge_latency_ms": 1823
 }
 ```
 
@@ -777,11 +747,13 @@ Don't parse free-text JSON from the model. Use **function calling** (OpenAI tool
         "format_compliance": {"type": "integer", "minimum": 0, "maximum": 1},
         "relevance": {"type": "integer", "minimum": 0, "maximum": 1}
       },
-      "required": ["coverage", "format_compliance", "relevance"]
+      "required": ["coverage", "format_compliance", "relevance"],
+      "additionalProperties": false
     },
     "label": {"enum": ["pass", "fail", "na"]}
   },
-  "required": ["schema_version", "analysis", "criterion_scores", "label"]
+  "required": ["schema_version", "analysis", "criterion_scores", "label"],
+  "additionalProperties": false
 }
 ```
 
@@ -793,7 +765,17 @@ This fails fast with clear errors instead of silently degrading when the model o
 
 **A/A tests** are your canary for judge reliability. Run the exact same dataset through the judge twice with identical configuration.
 
-**Large divergence (>5% disagreement) signals problems:**
+**Acceptance bands (per metric type):**
+- **Binary pass/fail:** Pass-rate delta ≤ 2 percentage points (pp)
+- **Cohen's κ delta:** ≤ 0.03
+- **Continuous scores:** Mean absolute difference ≤ 0.1 (on 0-1 scale)
+
+**Automated flagging:**
+- 🟢 Green: Within acceptance band → judge is stable
+- 🟡 Amber: 1-2× acceptance band → review rubric for ambiguity
+- 🔴 Red: >2× acceptance band → judge too stochastic or rubric severely under-specified
+
+**Large divergence signals problems:**
 - The judge is too stochastic → lower temperature, use majority vote
 - The rubric is under-specified → tighten criteria definitions
 - The metric itself may be asking for subjective judgments that vary even with identical inputs
