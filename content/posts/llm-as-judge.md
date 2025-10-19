@@ -1,6 +1,5 @@
 ---
-title: "LLM as a Judge: Complete Guide to Building
-  Trustworthy AI Evaluations"
+title: "Building a Trustworthy LLM-as-a-Judge: A Field Guide from the Trenches"
 date: 2025-10-19
 draft: false
 math: true
