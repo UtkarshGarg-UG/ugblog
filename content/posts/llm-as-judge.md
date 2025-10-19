@@ -1,10 +1,11 @@
 ---
-title: "Building a Trustworthy LLM-as-a-Judge: A Field Guide from the Trenches"
-date: 2025-10-17
+title: "LLM as a Judge: Complete Guide to Building
+  Trustworthy AI Evaluations"
+date: 2025-10-19
 draft: false
 math: true
 summary: "Less prompting, more statistics"
-tags: ["LLM", "LLM-as-Judge"]
+tags: ["LLM", "LLM-as-Judge", "Evaluation"]
 slug: "llm-as-a-judge-field-guide"
 description: "How to build reliable LLM judges: schemas, rubrics, statistics, and bias controls for trustworthy AI evaluation."
 showToc: true
@@ -87,9 +88,9 @@ Every reliable judge I've shipped has followed the same pattern:
 
 1. **Define the metric.** Write down what behavior you're measuring. Be specific about scope, edge cases, and what explicitly doesn't count.
 
-2. **Collect structured analyses.** Don't just ask for labels. Have the judge explain its reasoning in a constrained, template-driven format using tool calling (function calling APIs). This is critical: reading these analyses is how you discover what the judge actually understands.
+2. **Collect structured analyses.** Don't just ask for labels. Have the judge explain its reasoning in a constrained, template-driven format using tool calling (function calling APIs). This is critical: It works like a condensed version of Chain-of-though and reading these analyses helps us find how the LLM interprets the metrics and helps us identifies any potential ambiguities in our definitions. The COT summaries provide by the API providers are not helpful in this area, so better to ask for a "critical" thinking/analyses field.
 
-3. **Refine the specification.** Go back to your rubric and rewrite it based on what broke. Example: You read 50 analyses and notice the judge fails cases where the model says "The capital is probably Paris" (reasonable inference) but passes confident wrong facts. You update your rubric from "No hallucinations: doesn't make up facts" to "No hallucinations: doesn't fabricate specific facts (dates, numbers, names). ALLOWED: reasonable inferences marked with 'likely/probably.' NOT ALLOWED: confident statements of unverified facts."
+3. **Refine the specification.** Go back to your rubric and rewrite it based on what broke. Example: You read 50 (or even 10) analyses and notice the judge fails cases where the model says "The capital is probably Paris" (reasonable inference) but passes confident wrong facts. You update your rubric from "No hallucinations: doesn't make up facts" to "No hallucinations: doesn't fabricate specific facts (dates, numbers, names). ALLOWED: reasonable inferences marked with 'likely/probably.' NOT ALLOWED: confident statements of unverified facts."
 
 4. **Rerun and validate.** Compare to your gold set. Check human agreement. Test on different slices. Iterate.
 
