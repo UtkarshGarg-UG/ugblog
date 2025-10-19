@@ -130,7 +130,7 @@ Here's what that looks like in practice:
 
 When you place reasoning fields before conclusion fields (like `{"reasoning": ..., "answer": ...}` instead of `{"answer": ..., "reasoning": ...}`), you force the model to generate its analysis tokens first, then commit to a verdict. 
 
-![Field order comparison showing GPT-4o performance with reasoning-first vs answer-first schemas](/llm-judge/field-order-results.png)
+![Field order comparison showing GPT-4o performance with reasoning-first vs answer-first schemas](/llm-judge/reverse_json_mode.png)
 *Source: [Order of fields in Structured output can hurt LLMs output](https://www.dsdev.in/order-of-fields-in-structured-output-can-hurt-llms-output)*
 
 This isn't about "chain-of-thought prompting." It's about building an auditable system where the generation process itself enforces reasoning before judgment.
