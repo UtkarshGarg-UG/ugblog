@@ -349,7 +349,17 @@ where $S_i$ is the actual outcome (1 for win, 0 for loss) and $E_i$ is the expec
 - **Bradley-Terry** when you have all comparisons upfront and want maximum likelihood estimates
 - **Elo** when comparisons arrive sequentially or you want interpretable ratings
 
-![Ranking with confidence intervals from Bradley-Terry model](/llm-judge/ranking-with-cis.png)
+**Getting confidence intervals on rankings:**
+
+Don't just report point estimates (π values or Elo ratings). Use **bootstrap resampling** to quantify uncertainty:
+
+1. Resample your pairwise comparison results with replacement (1000+ iterations)
+2. Refit the Bradley-Terry or Elo model on each bootstrap sample
+3. Extract the 2.5th and 97.5th percentiles of each model's ranking to get 95% CIs
+
+This reveals when apparent ranking differences are just noise.
+
+![Ranking with confidence intervals from Bradley-Terry model](/llm-judge/fig6_ranking_with_cis.png)
 *Figure 6: Model rankings with 95% bootstrap confidence intervals. Overlapping CIs (e.g., Model B and C) indicate no statistically significant difference despite different point estimates.*
 
 > **Tip 9:** Always report confidence intervals on rankings. Bootstrap your pairwise results and refit the model 1000+ times. "Model A wins 52% of the time" might be noise.
@@ -364,60 +374,37 @@ LLM-as-a-judge evaluations need the same rigor as any measurement system. Here's
 
 **1. Gold sets and human agreement**
 
-> **Tip 10:** Maintain a small (50-200 item) expert-adjudicated gold set. If your judge doesn't correlate with humans at r > 0.7 or κ > 0.7, there's a disconnect between what you're measuring and what you think you're measuring.
+> **Tip 10:** Maintain a small (50-200 item) expert-adjudicated gold set. Validate that your judge correlates with human judgment using appropriate metrics.
+>
+> **Bonus:** Use disagreements between judge and human labels as calibration signals. When they diverge, read both the judge's analysis and the human annotator's reasoning to discover rubric ambiguities, missing edge cases, or criteria that need clearer examples.
 
-You need to validate that your LLM judge agrees with human judgment using the right metrics.
+Your LLM judge must agree with human judgment to be trustworthy. Use the right validation metrics depending on your output type.
 
 **Correlation Metrics: Does the judge rank things similarly to humans?**
 
 Use correlation when you have numeric scores or rankings.
 
-**Pearson's r** measures linear correlation between judge scores and human scores:
+**Pearson's r** measures linear correlation between continuous scores:
 
 $$r = \frac{\sum (x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum(x_i - \bar{x})^2 \sum(y_i - \bar{y})^2}}$$
 
-Values range from -1 to +1. r = 1 means perfect agreement, r = 0 means no relationship, r = -1 means perfect disagreement.
+where $x_i$ and $y_i$ are individual scores, $\bar{x}$ and $\bar{y}$ are means. Values range from -1 (perfect negative correlation) to +1 (perfect positive correlation).
 
-**Example:** You have 5 outputs scored by both the judge and humans on a 1-10 scale:
+**Spearman's ρ** measures rank correlation (order agreement):
 
-<div align="center">
+$$\rho = 1 - \frac{6\sum d_i^2}{n(n^2-1)}$$
 
-| Output | Human Score | Judge Score |
-|--------|-------------|-------------|
-| 1      | 3           | 4           |
-| 2      | 5           | 6           |
-| 3      | 7           | 7           |
-| 4      | 8           | 9           |
-| 5      | 9           | 8           |
+where $d_i$ is the difference between ranks for item $i$, and $n$ is the number of items. Equivalently, it's Pearson's r applied to ranks instead of raw scores.
 
-</div>
+**Use Pearson** when absolute score magnitudes matter. **Use Spearman** when you only care about relative ordering.
 
-Pearson's r = 0.95 (strong correlation). The judge's scores track human scores closely, though slightly inflated.
+![Pearson correlation example](/llm-judge/fig7a_pearson_correlation.png)
+*Figure 7a: Pearson's r = 0.94. Judge scores track human scores linearly with slight systematic inflation. Strong linear relationship indicates the judge captures the same quality dimension as humans.*
 
-**Spearman's ρ** measures rank correlation (order agreement), not actual scores:
+![Spearman correlation example](/llm-judge/fig7b_spearman_correlation.png)
+*Figure 7b: Spearman's ρ = 0.90. Despite one rank swap (outputs 4↔5), the judge preserves overall ordering. Rank correlation reveals ordering agreement independent of score scale.*
 
-It computes Pearson's r on the ranks instead of raw values. Use this when you care about relative ordering more than exact scores.
-
-**Example:** Same data, but now we convert to ranks:
-
-<div align="center">
-
-| Output | Human Rank | Judge Rank |
-|--------|------------|------------|
-| 1      | 1 (worst)  | 1          |
-| 2      | 2          | 2          |
-| 3      | 3          | 3          |
-| 4      | 4          | 5          |
-| 5      | 5 (best)   | 4          |
-
-</div>
-
-Spearman's ρ = 0.90. The judge mostly agrees on ordering, except it swapped outputs 4 and 5.
-
-**When to use:** Correlation is good for continuous scores. If r or ρ < 0.7, your judge is measuring something different from what humans perceive.
-
-![Scatter plot showing judge vs human scores](/llm-judge/correlation-plot.png)
-*Figure 7: Judge scores vs. human scores with Pearson's r = 0.95. Strong linear correlation indicates the judge tracks human judgment well, though with slight systematic inflation.*
+**Interpretation threshold:** If r or ρ < 0.7, your judge likely measures something different from human judgment. Investigate systematic disagreements by slicing results and reading divergent analyses.
 
 ---
 
@@ -430,6 +417,8 @@ Use agreement metrics when you have categorical labels (pass/fail, good/bad/ugly
 $$\kappa = \frac{P_o - P_e}{1 - P_e}$$
 
 where $P_o$ = observed agreement, $P_e$ = expected agreement by chance.
+
+**Intuition:** Raw agreement percentages can be misleading. If 90% of outputs are "pass," two raters randomly guessing "pass" every time would agree 81% of the time by pure chance (0.9 × 0.9). Cohen's κ corrects for this by asking: *"How much better than random chance is the agreement?"* κ = 0 means agreement is no better than chance, κ = 1 means perfect agreement beyond what chance would predict.
 
 **Example:** You have 100 outputs, each labeled pass/fail by both human and judge:
 
@@ -465,6 +454,10 @@ where $P_o$ = observed agreement, $P_e$ = expected agreement by chance.
 - κ = 0.81–1.00: Almost perfect agreement
 
 κ = 0.70 means substantial agreement. The 15% disagreement is better than random chance would predict.
+
+**Why the chance correction matters:** Notice that humans said "pass" 50% of the time and judges said "pass" 45% of the time. If they were labeling independently and randomly (but respecting their marginal distributions), we'd expect them to both say "pass" about 22.5% of the time and both say "fail" about 27.5% of the time, totaling 50% agreement by pure chance. Our observed 85% agreement is dramatically better than that baseline, yielding κ = 0.70.
+
+**Confidence intervals on κ:** Like any sample statistic, κ has uncertainty. With 100 samples, κ = 0.70 might have a 95% CI of [0.58, 0.81]. Use **bootstrap resampling** (see section below) to quantify this uncertainty. If your CI includes κ = 0.4, you can't confidently claim "substantial agreement"—the true value might only be "moderate."
 
 ---
 
@@ -504,7 +497,7 @@ After computing pairwise disagreements across all raters and outputs:
 
 **Important caveat:** These are **heuristics, not universal standards**. Acceptable thresholds depend on your task difficulty, domain subjectivity, and risk tolerance. For highly subjective tasks (e.g., "creativity"), κ = 0.60 might be state-of-the-art. For objective tasks (e.g., format compliance), you should aim higher. Always contextualize your agreement metrics against human inter-rater reliability on the same task.
 
-As a rough heuristic, if your judge doesn't correlate with humans at r > 0.7 (for scores) or κ/α > 0.7 (for labels), there's likely a disconnect between what you think you're measuring and what the metric actually captures.
+**Summary threshold guideline:** As a rough heuristic, if your judge doesn't correlate with humans at **r or ρ > 0.7** (for scores) or **κ/α > 0.7** (for labels), there's likely a disconnect between what you think you're measuring and what the metric actually captures.
 
 **2. Bootstrap confidence intervals and sample-size guidance**
 
@@ -567,8 +560,6 @@ If your headline number is "Model A improves accuracy by 3%" but the CI is [-1%,
 Even with a fixed prompt and low temperature, LLMs can give different judgments on the same input across multiple runs. Self-consistency checks reveal when your metric is unreliable.
 
 > **Tip 13:** For high-stakes evaluations, consider majority voting across 3 independent judge runs using different frontier models (e.g., from OpenAI, Anthropic, Google). This catches cases where a single judge might miss an issue or hallucinate a problem. Aggregate by taking the majority verdict on each criterion.
->
-> **Cost-benefit tradeoff:** This approach **triples your evaluation cost** (3× API calls, latency, complexity). Use **stratified triage** instead: run a single judge on all cases, then escalate only low-confidence or ambiguous verdicts (e.g., where self-consistency is low, or criteria scores are mixed) to the multi-judge panel. This reduces cost while preserving reliability where it matters most.
 
 **The method:**
 Run the judge N times (N ≥ 3) on the same input at low temperature (e.g., 0.0 or 0.1). If judgments vary, something is wrong.
@@ -615,13 +606,22 @@ Run the judge N times (N ≥ 3) on the same input at low temperature (e.g., 0.0 
 **Good example:** All 5 runs give identical judgments across all criteria. This suggests the metric is well-defined and the judge interprets it consistently.
 
 ![Self-consistency check results across 5 runs](/llm-judge/self-consistency.png)
-*Figure 10: Self-consistency check on the same input across 5 runs. Run 4 diverges on "relevance" and final label, signaling rubric ambiguity that needs addressing.*
+*Figure 10: Self-consistency analysis across 100 test cases (5 runs each). **Step 1**: Example showing one test case with variance across 5 runs (H calculated per criterion). **Step 2**: Aggregation flow—calculate entropy for each of 100 cases, then take mean per criterion. **Step 3**: Results show Relevance (H = 0.68, only 21% perfect) and Format (H = 0.53, 37% perfect) are unstable, while Coverage (H = 0.19, 76% perfect) is well-specified.*
 
-**Quantify variance:** Beyond manual inspection, track **per-case label entropy** across runs:
-- For each input, compute entropy: $H = -\sum_i p_i \log_2(p_i)$ where $p_i$ is the proportion of runs that yielded label $i$
-- Example: 5 runs → 4 "fail", 1 "pass" → $H = -(0.8 \log_2 0.8 + 0.2 \log_2 0.2) \approx 0.72$ bits
-- Example: 5 runs → all "fail" → $H = 0$ bits (perfect consistency)
-- Report **mean entropy across all test cases**: E[H] < 0.5 is good, E[H] > 1.0 signals rubric ambiguity
+**Quantify variance:** Beyond manual inspection, track **per-criterion entropy** across runs to identify which specific criteria are unstable:
+- For each test case, compute entropy per criterion: $H = -\sum_i p_i \log_2(p_i)$ where $p_i$ is the proportion of runs that yielded value $i$
+- Example for a single test case:
+  - **Coverage**: 5/5 runs → "1" → $H = 0$ bits (perfect consistency ✓)
+  - **Format**: 4/5 runs → "1", 1/5 → "0" → $H \approx 0.72$ bits (variance detected)
+  - **Relevance**: 4/5 runs → "0", 1/5 → "1" → $H \approx 0.72$ bits (variance detected)
+- Aggregate across your dataset: compute **mean entropy per criterion** across all test cases
+- Example from 100-case analysis (shown in Figure 10):
+  - **Coverage**: mean $H = 0.19$ bits → excellent stability
+  - **Format**: mean $H = 0.53$ bits → moderate variance, investigate edge cases
+  - **Relevance**: mean $H = 0.68$ bits → high variance, tighten criterion definition
+- **Actionable insight**: Focus on Relevance and Format criteria; Coverage is already well-defined
+- **Thresholds**: mean $H < 0.3$ is excellent, $0.3 \leq H < 0.5$ is good, $H \geq 0.5$ signals instability
+- Track this metric over time as you refine your rubric—entropy should decrease as criteria become clearer
 
 Inconsistent judgments tell you where your metric needs work. They're not a sign of model randomness; they're a sign your rubric has ambiguity that needs resolving.
 
@@ -725,7 +725,7 @@ This lets you:
 
 ### Use Structured Outputs (Tool Calls)
 
-Don't parse free-text JSON from the model. Use **function calling** (OpenAI tools, Anthropic tool use) to enforce a schema:
+Don't parse free-text JSON from the model. Use **function calling** (OpenAI tools, Anthropic tool use) to enforce a schema (only ask for all metrics with the best reasoning models. Else better to do the eval for each metric separately.):
 
 ```json
 {
