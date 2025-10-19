@@ -11,21 +11,17 @@ showToc: true
 tocOpen: false
 ---
 
-## TL;DR
+**TL;DR**
 
-Building a trustworthy LLM-as-a-Judge requires treating evaluation as a science experiment, not prompt engineering. Five core principles:
+* **Treat LLM-as-a-judge as measurement, not prompting.**
+* **Enforce schema-first outputs:** structured analysis before labels via tool APIs.
+* **Start with binary rubrics;** iterate by reading judge analyses to fix rubric gaps.
+* **Randomize and blind:** AB/BA order, criterion order, and model identities.
+* **Quantify uncertainty:** bootstrap CIs, A/A stability, and slice results by difficulty.
+* **Anchor to humans:** maintain gold sets; report κ/α or Spearman vs human judges.
 
-1. **Schema-first design**: Require structured reasoning before labels. Place reasoning fields first in your JSON schema (forcing analysis-then-verdict token order). Use tool calling APIs to enforce schemas strictly.
+*Bottom line: Build auditable judgments with stats and human alignment, then iterate ruthlessly.*
 
-2. **Binary rubrics, clear criteria**: Start with 0/1 criteria, not vague scales. Iterate by reading judge analyses systematically—they're your debugging interface for discovering rubric gaps.
-
-3. **Randomize & blind everything**: Randomize output order (AB/BA), criterion order, and model identities. Control positional bias in pairwise comparisons. Blind judges to brand names and metadata that leak answers.
-
-4. **Bootstrap CIs & A/A tests**: Report 95% confidence intervals for all metrics. Run A/A tests to verify judge stability. Use acceptance bands (e.g., pass-rate delta ≤2pp) with red/amber/green flags.
-
-5. **Read analyses, not just labels**: Schedule time to read judge reasoning on failures, disagreements with humans, and edge cases. This is where you discover what your metric actually measures vs. what you intended.
-
-**Bottom line:** Your first metric definition is never right. Build with statistical rigor, iterate on rubrics by reading analyses, and version everything for reproducibility.
 
 ---
 
