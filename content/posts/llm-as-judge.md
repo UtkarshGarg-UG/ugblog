@@ -32,7 +32,7 @@ The first evaluation run looked great. The judge flagged cases where the agent w
 Then I started going through the actual evaluation trajectory. The judge was failing cases where the agent deleted the requested section, then did something *thoughtful*: 
 > The agent updated the table of contents to reflect the deletion, adjusted the conclusion to account for the removed material, renumbered the remaining sections. All the things you'd *want* a good editing agent to do. My "precision" metric was punishing exactly the intelligent, context-aware behavior I was trying to cultivate!
 
-<iframe src="/llm-judge/intro.html" width="100%" height="1280" style="border:0; aspect-ratio: 16/9; max-width: 100%;" loading="lazy" title="Interactive demo of LLM judge evaluating document editing precision"></iframe>
+<iframe src="/llm-judge/intro.html" width="100%" height="940" style="border:0; aspect-ratio: 16/9; max-width: 100%;" loading="lazy" title="Interactive demo of LLM judge evaluating document editing precision"></iframe>
 <noscript>
 <p><em>This interactive demo requires JavaScript. It shows an LLM judge evaluating whether a document editing agent made only the requested changes or introduced unrelated edits.</em></p>
 </noscript>
