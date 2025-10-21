@@ -5,6 +5,9 @@ draft: true
 math: true
 summary: "A quick visual intuition for entropy with an interactive chart."
 tags: ["math", "information-theory"]
+cover:
+    image: "entropy-explorer.gif"
+    alt: "Shannon Entropy Visualization - showing entropy changes as probability distribution shifts"
 ---
 # The Curious Case of KL Divergence
 

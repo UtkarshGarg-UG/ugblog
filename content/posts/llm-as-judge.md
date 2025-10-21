@@ -9,6 +9,9 @@ slug: "llm-as-a-judge-field-guide"
 description: "How to build reliable LLM judges: schemas, rubrics, statistics, and bias controls for trustworthy AI evaluation."
 showToc: true
 tocOpen: false
+cover:
+    image: "llm-judge/fig6_ranking_with_cis.png"
+    alt: "Model rankings with confidence intervals from Bradley-Terry model"
 ---
 
 **TL;DR**
