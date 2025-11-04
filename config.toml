@@ -2,6 +2,7 @@ baseURL = "/"
 languageCode = "en-us"
 title = "Utkarsh Garg"
 theme = "PaperMod"
+enableRobotsTXT = true
 
 # Allow raw HTML (so <iframe> works)
 [markup]
