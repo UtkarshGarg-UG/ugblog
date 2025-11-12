@@ -50,14 +50,6 @@ Built customer-facing AI systems from the ground up:
 
 ---
 
-## 🔬 Research & Publications
-
-- **Controllable Generation of Dialogue Acts for Dialogue Systems** – *SIGdial 2023* ([paper](https://aclanthology.org/2023.sigdial-1.33/))  
-- **Systems and Methods for Writing Feedback Using an AI Engine** – *US Patent MS# 412873-US-NP*  
-- **Aligning Multilingual Word Embeddings to Dictionary Meanings** ([demo](https://github.com/UtkarshGarg-UG))  
-
----
-
 ## 🧩 Interests
 
 - Multi-agent architectures and orchestration  

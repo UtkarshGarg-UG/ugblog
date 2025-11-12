@@ -1,17 +1,18 @@
 ---
-title: "Shannon Entropy"
+title: "The Curious Case of KL Divergence"
 date: 2025-09-01
 draft: true
 math: true
-summary: "A quick visual intuition for entropy with an interactive chart."
+summary: "In depth understanding of KLD starting from Entropy to RL."
 tags: ["math", "information-theory"]
 cover:
     image: "entropy-explorer.gif"
     alt: "Shannon Entropy Visualization - showing entropy changes as probability distribution shifts"
 ---
-# The Curious Case of KL Divergence
 
-Over years, KL divergence (KLD) is something that can be found in different areas of the Machine learning world. Be it Knowledge Distillation, or Semi-Supervised learning and now even to train LLMs with Reinforcement Learning. In all of these, the goal is always to bring two distributions closer. But there is a subtle difference on how KLD is defined and used. We have Forward KL and Backward KL. In supervised learning setup, forward KL is used and in RL setup, reverse KL is used. In this article, we’ll see what Forward and Reverse KL are and what their properties are. We’ll investigate in which scenarios it makes sense to use Reverse and Forward KL and also study reasons behind them.
+Over years, KL divergence (KLD) is something that can be found in different areas of the Machine learning world. Be it Knowledge Distillation, or Semi-Supervised learning and now even to train LLMs with Reinforcement Learning. In all of these, the goal is always to bring two distributions closer. But there is a subtle difference on how KLD is defined and used. We have Forward KL and Backward KL. In supervised learning setup, forward KL is used and in RL setup, reverse KL is used. In this article, we'll see what Forward and Reverse KL are and what their properties are. We'll investigate in which scenarios it makes sense to use Reverse and Forward KL and also study the reasons behind them. Importantly, we'll explore why forward KL is not suitable for RL setups (where online policy sampling is required) and why reverse KL is not suitable for knowledge distillation (due to mode-seeking behavior and blind spots that lose teacher knowledge).
+
+Don't worry if this sounds abstract—we'll start from the fundamentals. We'll build up from [information theory](#information-in-the-shannon-sense) and [entropy](#entropy), derive the [mathematics of KL divergence](#2-kl-divergence-definition-and-derivation), explore [forward vs reverse KL behaviors](#3-forward-vs-reverse-kl-behaviors-mode-covering-vs-mode-seeking), and by the end you'll have a complete understanding of when and why to use each variant.
 
 ## Information (in the Shannon Sense)
 
@@ -46,7 +47,7 @@ $$
 
 ### Axiom A2 — Additivity for Independent Events
 
-If two independent events occur, say one with probability \\( p \\) and the other with \\( q \\), then the information gained from both should be the **sum** of the individual informations:
+If two *independent* events occur, say one with probability \\( p \\) and the other with \\( q \\), then the information gained from both should be the **sum** of the individual informations:
 
 $$
 I(p \cdot q) = I(p) + I(q)
@@ -85,9 +86,9 @@ $$
 
 This measures information in **bits** — the amount of binary decisions needed to resolve uncertainty.
 
-## Information and Probability
+## Bits, Information and Probability
 
-This definition has a few intuitive properties:
+As we saw in the previous section on Information, it's definition has a few intuitive properties:
 
 * If an event is **certain** (\\( p = 1 \\)), then:
 
@@ -126,7 +127,7 @@ The surprise is greater — and the informational value reflects it.
 <iframe
   src= "/entropy-explorer/information.html"
   width="100%"
-  height="1040"
+  height="1000"
   style="border:0"
   loading="lazy">
 </iframe>
@@ -141,7 +142,7 @@ Because **probability only measures uncertainty *before* an event happens**. Onc
 * Reflect how many binary decisions are needed, and
 * Behave smoothly with respect to changes in probability.
 
-Probability can’t do this. But information can.
+Probability can't do this. But information can.
 
 ## Bottom Line
 
@@ -156,24 +157,61 @@ Once you see this, information theory becomes less about abstract formulas, and 
 ## Entropy
 
 Entropy, the root of all solutions :)
-Information in previous section we focused on specific events. Entropy is the expected information over all the events.
+Information in previous section we focused on specific events. Entropy is the **expected** information over all the events.
 
 So, we try to find the expected value of a distribution.
 For a discrete *distribution* \\(P\\) over outcomes \\(x\\):
 
 $$
-H(P)=\-\sum_x P(x)\,\log P(x).
+H(P)=\-\sum_x P(x)\log P(x).
 $$
 
-Suppose we define a random variable \\(X\\) representing the outcome of a fair coin toss. Naturally, we want to know: on average, how many bits are needed to encode the outcomes produced by this distribution?
+Suppose we define a random variable \\(X\\) representing the outcome of a fair coin toss. Naturally, we want to know: on average, how many [bits](#bits-information-and-probability) are needed to encode the outcomes produced by this distribution?
 
 This is exactly what entropy measures — the expected amount of information per event drawn from a distribution.
 
-Using Shannon’s entropy formula:
+Using Shannon's entropy formula:
 $$
 H(X)\=\-\sum_x p(x)\log_2 p(x)\=\\mathbb{E}_{X\sim p}\big[-\log_2 p(X)\big].
 $$
-where \\(X\\) is drawn from distribution \\(P\\)
+
+### Understanding the Notation: $\mathbb{E}_{X\sim p}$
+
+Let's break down this notation piece by piece, since it's central to everything that follows:
+
+**What does $\mathbb{E}_{X\sim p}\big[-\log_2 p(X)\big]$ mean?**
+
+* $\mathbb{E}[\cdot]$ = **expectation** = weighted average
+* $X \sim p$ = "**X follows distribution p**" = we sample outcomes according to the probabilities specified by p
+* $-\log_2 p(X)$ = the [information content](#information-in-the-shannon-sense) when outcome X occurs
+* **Together**: "average information when we sample outcomes according to distribution p"
+
+**Clarifying X vs P:**
+
+* **$P$ (or $p$)** = the **probability distribution** (the blueprint/rules that assign probabilities)
+  * Example: For a coin, $p(\text{Heads}) = 0.5$ and $p(\text{Tails}) = 0.5$
+* **$X$** = the **random variable** (the actual outcome we observe)
+  * Example: $X$ could be Heads or Tails
+* **$X \sim P$** = "$X$ is drawn from $P$" means: when we observe $X$, each outcome appears with probability given by $P$
+
+**How the expectation becomes a sum:**
+
+When we write $\mathbb{E}_{X\sim p}\big[-\log_2 p(X)\big]$, we're computing:
+* For each possible outcome $x$ that $X$ could be
+* Multiply its information $-\log_2 p(x)$ by the probability $p(x)$ of observing it
+* Sum across all outcomes: $\sum_x p(x) \cdot [-\log_2 p(x)]$
+
+**Why "sampling from P" matters:**
+
+Notice that in entropy $H(P)$, we use $P$ for **both**:
+1. **Sampling**: which outcomes we expect to see (via $X \sim p$)
+2. **Evaluation**: which probabilities we use to compute information (via $p(X)$)
+
+This dual role of $P$ is crucial. Later, we'll see what happens when we sample from one distribution but evaluate probabilities from a *different* distribution—that's where things get interesting.
+
+---
+
+**Example: Fair Coin**
 
 For a fair coin, both outcomes — heads (H) and tails (T) — have equal probability:
 
@@ -181,7 +219,14 @@ $$
 H(X) = -[0.5 \cdot \log_2(0.5) + 0.5 \cdot \log_2(0.5)] = 0.5 \cdot 1 + 0.5 \cdot 1 = 1 \text{ bit}
 $$
 
-So the entropy of a fair coin toss is 1 bit — which aligns with our intuition: a single binary question (e.g. “Is it heads?”) is enough to fully describe the outcome.
+**Breaking down the expectation calculation:**
+
+Using $\mathbb{E}_{X\sim p}\big[-\log_2 p(X)\big]$:
+* When $X = \text{Heads}$ (happens with probability 0.5): we get $-\log_2(0.5) = 1$ bit
+* When $X = \text{Tails}$ (happens with probability 0.5): we get $-\log_2(0.5) = 1$ bit
+* **Average**: $0.5 \times 1 + 0.5 \times 1 = 1$ bit
+
+So the entropy of a fair coin toss is 1 bit — which aligns with our intuition: a single binary question (e.g. "Is it heads?") is enough to fully describe the outcome.
 
 But if the coin was biased, 
 
@@ -207,7 +252,9 @@ $$
 
 So, the entropy of this biased coin is approximately 0.469 bits — noticeably less than 1 bit.
 
-This makes intuitive sense: if the coin lands heads 90% of the time, the outcome is more predictable. There's less uncertainty, and thus less information gained from each toss. You wouldn’t need a full bit to encode or transmit the result efficiently — shorter messages can take advantage of the skewed probabilities.
+This makes intuitive sense: if the coin lands heads 90% of the time, the outcome is more predictable. There's less uncertainty, and thus less information gained from each toss.
+
+**Think of it this way**: entropy measures the average "surprise" per outcome. With a fair coin, every flip is equally surprising (1 bit of information). With a biased coin, most flips give you little new information ("heads again, as expected"), so the average surprise is much lower (0.469 bits). The more predictable the distribution, the lower the entropy.
 
 Here is another example showing how as we become more confident of next word being `dog`, the entropy drops.
 
@@ -219,24 +266,89 @@ Here is another example showing how as we become more confident of next word bei
   loading="lazy">
 </iframe>
 
-### Cross-entropy
+## Cross-entropy
 
-For distributions \(P\) (reference) and \(Q\) (model):
+### The Intuition: When Your Model Gets It Wrong
 
-$$
-H(P, Q)\;=\;-\sum_x P(x)\,\log Q(x).
-$$
+Imagine you're training a language model to predict the next word. After analyzing thousands of movie reviews, you notice that when people write "The movie was", they complete it with:
 
-Interpretation: average code length for samples from **$P$** if you **encode as if $Q$ were true**.
+* **"amazing"**: 50% of the time
+* **"terrible"**: 40% of the time
+* **"okay"**: 10% of the time
 
-* If $Q=P$, then $H(P,Q)=H(P)$.
-* If $Q$ is a poor approximation, $H(P,Q)$ is larger (you waste codelength).
+This is the **true distribution** $P$ — how people actually complete this phrase in real data.
 
-> **Support matching**: for cross-entropy (and forward KL) to be finite, you need $Q(x)>0$ wherever $P(x)>0$. If $P(x)>0$ but $Q(x)=0$, $\log Q(x)=-\infty$.
+**First, let's think about entropy** $H(P)$:
+
+Even if you had a *perfect* model that knew these exact probabilities, there's still inherent uncertainty. You can't predict exactly which word comes next; you can only know that it's "amazing" half the time, "terrible" 40% of the time, etc.
+
+The entropy $H(P) = \mathbb{E}_{X\sim P}[-\log P(X)]$ measures this baseline unpredictability. It's the average surprise you'd experience if you had the correct probabilities.
+
+For our example: $H(P) \approx 1.36$ bits (you can verify this using the formula we learned).
+
+**Now, cross-entropy: What if your model is wrong?**
+
+You train a language model, but it learns incorrectly. Your model $Q$ thinks people are overly optimistic, predicting:
+
+* **"amazing"**: 90%
+* **"terrible"**: 5%
+* **"okay"**: 5%
+
+Now when you encounter real reviews (drawn from the true distribution $P$):
+
+* 50% of the time, you see "amazing" — your model expected this 90% of the time, so you're *less* surprised than reality warrants ($-\log(0.9) \approx 0.15$ bits vs the true $-\log(0.5) \approx 1$ bit)
+* **40% of the time, you see "terrible"** — but your model only expected this 5% of the time! You're *way more* surprised ($-\log(0.05) \approx 4.32$ bits vs the true $-\log(0.4) \approx 1.32$ bits)
+* 10% of the time, you see "okay" — again, model expected only 5%, so you're more surprised than you should be
+
+The **cross-entropy** $H(P,Q)$ measures your average surprise when:
+* Reality follows the true distribution $P$ (which words actually appear)
+* But you're using your model's wrong probabilities $Q$ to measure surprise
+
+For this example: $H(P,Q) \approx 2.18$ bits — much higher than the entropy of 1.36 bits!
+
+The excess surprise (2.18 - 1.36 = 0.82 bits) is the cost of having the wrong model. **This is exactly what "cross-entropy loss" measures when training LLMs** — it penalizes the model for assigning low probabilities to words that actually appear in the training data. By minimizing this cross-entropy, we force the model's predictions $Q$ to better match the true distribution $P$ of the data.
+
+### See It In Action
+
+Try the interactive visualization below. Watch color-coded particles representing each word floating in a force field:
+- **Left panel (Reality - Distribution P)**: Shows the baseline with calm, steady particle motion — this is what perfect predictions look like
+- **Right panel (Your Model - Distribution Q)**: When your predictions are wrong, particles become CHAOTIC! They explode with speed, glow intensely, and create extreme turbulence proportional to the surprise level
+
+Notice the green "P:" values next to each slider showing the true distribution. Adjust the sliders to change your model's predictions. When Q predicts "terrible" at only 5% but it appears 40% of the time, watch the red particles in the right panel go absolutely WILD! Can you calm the chaos by making Q match P?
+
+<iframe
+  src="/entropy-explorer/cross_entropy.html"
+  width="100%"
+  height="550"
+  style="border:4; margin: 50px 0; display: block;"
+  loading="lazy">
+</iframe>
 
 ---
 
-## Cross Entropy
+### The Mathematics
+
+**The Formula:**
+
+$$
+H(P, Q) = \mathbb{E}_{X\sim P}[-\log Q(X)] = -\sum_x P(x)\,\log Q(x).
+$$
+
+**The key difference from [entropy](#entropy):** In entropy $H(P)$, we used $P$ for both sampling outcomes and measuring surprise. Cross-entropy breaks this:
+* **$X \sim P$**: Sample outcomes from the true distribution $P$ (what actually happens)
+* **$-\log Q(X)$**: Measure surprise using model $Q$'s probabilities (what we predicted)
+
+This becomes the sum: $\sum_x P(x) \cdot [-\log Q(x)]$ — weight each outcome's Q-based surprise by how often it actually occurs under $P$.
+
+**Key Properties:**
+
+* $H(P,Q) = H(P)$ when $Q = P$ (perfect model)
+* $H(P,Q) > H(P)$ when $Q \neq P$ (the worse the approximation, the higher the cross-entropy)
+* Minimizing cross-entropy = making $Q$ closer to $P$
+
+> **Support matching:** $Q(x)$ must be $> 0$ wherever $P(x) > 0$. If your model says an outcome is impossible ($Q(x) = 0$) but it actually happens ($P(x) > 0$), cross-entropy becomes infinite.
+
+---
 
 
 ## 2) KL Divergence: Definition and Derivation
@@ -247,7 +359,7 @@ $$
 D_{\mathrm{KL}}(P\|Q)\;=\;\sum_x P(x)\,\log\frac{P(x)}{Q(x)}.
 $$
 
-### Derivation from (cross-)entropy
+### Derivation from [cross-entropy](#cross-entropy)
 
 $$
 \begin{aligned}
@@ -258,8 +370,8 @@ D_{\mathrm{KL}}(P\|Q)
 \end{aligned}
 $$
 
-* $H(P)$ is a **constant** if $P$ is fixed (e.g., teacher distribution).
-* Minimizing $D_{\mathrm{KL}}(P\|Q)$ ↔ minimizing cross-entropy $H(P,Q)$.
+* $H(P)$ is a **constant** if $P$ is fixed (e.g., teacher distribution). See the [Entropy](#entropy) section for more details.
+* Minimizing $D_{\mathrm{KL}}(P\|Q)$ ↔ minimizing [cross-entropy](#cross-entropy) $H(P,Q)$.
 
 > KL is **asymmetric**: $D_{\mathrm{KL}}(P\|Q)\neq D_{\mathrm{KL}}(Q\|P)$. The direction matters.
 
@@ -292,6 +404,8 @@ $$
 
   * **Forward KL**: inflate variance and center between peaks to **cover both**.
   * **Reverse KL**: pick **one** peak and ignore the other (mode-seeking).
+
+> For the mathematical details on how these behaviors emerge from the gradients, see [Section 4: Gradients You Actually Optimize](#4-gradients-you-actually-optimize).
 
 ---
 
@@ -370,11 +484,11 @@ $$
 
 **Setup:** Teacher $P(\cdot\mid\text{context})$ gives soft targets; Student $Q_\theta$ tries to match them.
 
-* **Objective:** minimize $D_{\mathrm{KL}}(P\|Q_\theta)=H(P,Q_\theta)-H(P)$.
-* **Gradient:** $-\mathbb{E}_{x\sim P}\nabla_\theta\log Q_\theta(x)$.
-* **Properties:** stable, low-variance, **mode-covering** (no blind spots), trivial to implement (it’s the usual cross-entropy).
+* **Objective:** minimize $D_{\mathrm{KL}}(P\|Q_\theta)=H(P,Q_\theta)-H(P)$ ([forward KL](#3-forward-vs-reverse-kl-behaviors-mode-covering-vs-mode-seeking)).
+* **Gradient:** $-\mathbb{E}_{x\sim P}\nabla_\theta\log Q_\theta(x)$ (see [gradient derivation](#41-forward-kl-gradient-low-variance)).
+* **Properties:** stable, low-variance, **mode-covering** (no blind spots), trivial to implement (it's the usual [cross-entropy](#cross-entropy)).
 
-> **What about the entropy term $H(P)$?** It’s a constant w\.r.t. $\theta$ and doesn’t affect gradients—you don’t try to “increase” or “decrease” it during student training.
+> **What about the [entropy](#entropy) term $H(P)$?** It's a constant w\.r.t. $\theta$ and doesn't affect gradients—you don't try to "increase" or "decrease" it during student training.
 
 ---
 
@@ -397,7 +511,7 @@ $$
 r(x)=\log P(x)-\log Q_\theta(x).
 $$
 
-PPO’s policy-gradient (ignoring clipping for clarity) is
+PPO's policy-gradient (ignoring clipping for clarity, see [reverse KL gradient](#42-reverse-kl-gradient-via-the-log-derivative-trick)) is
 
 $$
 \nabla_\theta J=\mathbb{E}_{x\sim Q_\theta}\big[A(x)\,\nabla_\theta\log Q_\theta(x)\big],
@@ -461,12 +575,12 @@ $\;Q(\text{A})=0.98,\;Q(\text{B})=0.02,\;Q(\text{C})=0.$
 
 ## 13) Summary Cheat-Sheet
 
-* **Entropy**: $H(P)=-\sum P\log P$.
-* **Forward KL**: $D(P\|Q)=H(P,Q)-H(P)$. Low-variance gradients, **mode-covering**, needs **support matching** (finite only if $Q>0$ where $P>0$).
-* **Reverse KL**: $D(Q\|P)$ with gradient
-  $\mathbb{E}_{x\sim Q}[(\log Q-\log P)\nabla\log Q]$. **Mode-seeking**, **blind spots**, **high variance**.
-* **Distillation**: Use **forward KL** (cross-entropy). To focus on task-relevant modes, **filter/weight the teacher** and still use forward KL.
-* **PPO on KL reward**: exactly minimizes **reverse KL**; inherits its downsides for supervised settings.
-* **Magnitude of KL**: “how mismatched,” but direction matters; can be infinite with support mismatch.
+* **[Entropy](#entropy)**: $H(P)=-\sum P\log P$.
+* **[Forward KL](#forward-kl-mode-covering)**: $D(P\|Q)=H(P,Q)-H(P)$. [Low-variance gradients](#41-forward-kl-gradient-low-variance), **mode-covering**, needs **support matching** (finite only if $Q>0$ where $P>0$).
+* **[Reverse KL](#reverse-kl-mode-seeking)**: $D(Q\|P)$ with [gradient](#42-reverse-kl-gradient-via-the-log-derivative-trick)
+  $\mathbb{E}_{x\sim Q}[(\log Q-\log P)\nabla\log Q]$. **Mode-seeking**, **[blind spots](#5-blind-spots-and-variance-why-reverse-kl-is-tricky)**, **high variance**.
+* **[Distillation](#6-knowledge-distillation-why-forward-kl-wins)**: Use **forward KL** ([cross-entropy](#cross-entropy)). To focus on task-relevant modes, **filter/weight the teacher** and still use forward KL.
+* **[PPO on KL reward](#8-ppo-on-a-kl-only-reward--reverse-kl-minimization)**: exactly minimizes **reverse KL**; inherits its downsides for supervised settings.
+* **Magnitude of KL**: "how mismatched," but direction matters; can be infinite with support mismatch.
 
 If you want, I can add a small code snippet that numerically compares gradient variance for forward vs. reverse KL on a toy problem.
