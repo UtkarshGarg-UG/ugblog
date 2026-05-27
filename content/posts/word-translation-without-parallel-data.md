@@ -8,9 +8,8 @@ summary: "Three beauties meet in this paper. Words in one language end up intern
 tags: ["nlp", "linguistics", "linear-algebra", "embeddings", "gan", "procrustes", "svd"]
 showToc: false
 cover:
-    image: "word-translation/cover.svg"
-    alt: "Two embedding clouds aligning into shared bilingual word pairs"
-    caption: "Two languages, learned independently, share the same shape."
+    image: "word-translation/cover.gif"
+    alt: "Two embedding clouds rotating into alignment, with English/Italian word pairs"
     hiddenInSingle: true
 ---
 
