@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Procrustes via SVD</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px; box-sizing: border-box;
+    position: relative;
+  }
+  canvas { display: block; width: 100%; max-width: 600px; height: auto; aspect-ratio: 1 / 1; }
+  .hint {
+    position: absolute; top: 22px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #786c5b; transition: color 0.5s ease;
+  }
+  .hint.s1 { color: #82a8c3; }
+  .hint.s2 { color: #c8a838; }
+  .hint.s3 { color: #d4895c; }
+  .hint.s4 { color: #95b078; }
+  .replay {
+    position: absolute; top: 14px; right: 14px;
+    background: none; border: 1px solid #3a352d; color: #8a7e6d;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; padding: 0; cursor: pointer; z-index: 10;
+    transition: all 0.2s ease;
+  }
+  .replay:hover { border-color: #82a8c3; color: #82a8c3; }
+  .phasenav {
+    position: absolute; bottom: 60px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 7px;
+    z-index: 5;
+  }
+  .phasenav .pip {
+    width: 22px; height: 3px; border-radius: 2px;
+    background: rgba(138, 126, 109, 0.25);
+    cursor: pointer;
+    transition: background 0.3s ease, transform 0.2s ease;
+  }
+  .phasenav .pip:hover { background: rgba(138, 126, 109, 0.55); transform: scaleY(1.5); }
+  .phasenav .pip.active { background: currentColor; }
+  .formula {
+    position: absolute; bottom: 22px; left: 0; right: 0;
+    text-align: center;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 12px;
+    color: #8a7e6d;
+  }
+  .formula b { color: #e8dcc1; }
+  .formula .u  { color: #95b078; }
+  .formula .s  { color: #d4895c; }
+  .formula .vt { color: #c8a838; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="hint s1" id="hint">step 1 · form M = Yᵀ X</div>
+  <button class="replay" id="replay" title="replay">↻</button>
+  <canvas id="cv"></canvas>
+  <div class="phasenav" id="phasenav"></div>
+  <div class="formula" id="formula">
+    M = Yᵀ X  &nbsp;→&nbsp;  M = <span class="u">U</span><span class="s">Σ</span><span class="vt">Vᵀ</span>  &nbsp;→&nbsp;  W★ = <span class="u">U</span><span class="vt">Vᵀ</span>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const hint = document.getElementById('hint');
+const replay = document.getElementById('replay');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+const PAL = {
+  blue:'#82a8c3', caramel:'#d4895c', sage:'#95b078',
+  gold:'#c8a838', rose:'#c47a8a', rust:'#c25c4a',
+  muted:'#8a7e6d', faint:'#5e5648', cream:'#e8dcc1',
+};
+
+function rot(t) { return [[Math.cos(t), -Math.sin(t)], [Math.sin(t), Math.cos(t)]]; }
+function apply(M, p) { return [M[0][0]*p[0] + M[0][1]*p[1], M[1][0]*p[0] + M[1][1]*p[1]]; }
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2; }
+function withA(hex, a) { return hex + Math.round(a * 255).toString(16).padStart(2, '0'); }
+
+// SVD of M (visual demo): M acts as rotate-stretch-rotate.
+const THETA_V = 24 * Math.PI / 180;   // V's first column angle
+const THETA_U = 70 * Math.PI / 180;   // U's first column angle
+const SIG1 = 1.45;
+const SIG2 = 0.55;
+
+// Apply M to a unit-circle point: q = U Σ Vᵀ p
+function applyM(p) {
+  let q = apply(rot(-THETA_V), p);            // V^T rotation
+  q = [q[0] * SIG1, q[1] * SIG2];             // Sigma stretch
+  q = apply(rot(THETA_U), q);                 // U rotation
+  return q;
+}
+
+// Phases of the animation
+const T_FORM = 1.5;        // showing M form
+const T_DECOMPOSE = 2.5;   // M decomposes into U, Σ, V^T
+const T_STRIP = 2.0;       // Σ slides away
+const T_FINAL = 2.5;       // W = UV^T applied to circle
+const T_LOOP = T_FORM + T_DECOMPOSE + T_STRIP + T_FINAL + 0.6;
+
+let t0 = performance.now();
+
+function phaseInfo(t) {
+  if (t < T_FORM) return { name: 'form', local: t / T_FORM };
+  if (t < T_FORM + T_DECOMPOSE) return { name: 'decompose', local: (t - T_FORM) / T_DECOMPOSE };
+  if (t < T_FORM + T_DECOMPOSE + T_STRIP) return { name: 'strip', local: (t - T_FORM - T_DECOMPOSE) / T_STRIP };
+  if (t < T_FORM + T_DECOMPOSE + T_STRIP + T_FINAL) return { name: 'final', local: (t - T_FORM - T_DECOMPOSE - T_STRIP) / T_FINAL };
+  return { name: 'hold', local: 1 };
+}
+
+function drawEllipsePath(ctx, cx, cy, sxArr, syArr, transformFn) {
+  const N = 64;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    let q = transformFn([Math.cos(a), Math.sin(a)]);
+    const px = cx + q[0] * sxArr;
+    const py = cy - q[1] * syArr;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const scale = Math.min(w, h) * 0.18;
+
+  const tNow = (performance.now() - t0) / 1000;
+  const t = tNow % T_LOOP;
+  const { name, local } = phaseInfo(t);
+
+  // Subtle axes
+  ctx.strokeStyle = 'rgba(138, 126, 109, 0.07)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();
+
+  // Ghost unit circle (always shown)
+  ctx.strokeStyle = 'rgba(138, 126, 109, 0.22)';
+  ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    const x = cx + Math.cos(a) * scale, y = cy - Math.sin(a) * scale;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath(); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Stage decision: what to draw based on phase
+  let hintText = '', hintCls = '';
+
+  if (name === 'form') {
+    // Show M acting on the unit circle (becomes an ellipse).
+    const u = easeInOut(local);
+    drawEllipsePath(ctx, cx, cy, scale, scale, (p) => {
+      const target = applyM(p);
+      return [p[0] + (target[0] - p[0]) * u, p[1] + (target[1] - p[1]) * u];
+    });
+    ctx.fillStyle = withA(PAL.blue, 0.18);
+    ctx.fill();
+    ctx.strokeStyle = PAL.blue;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // M label
+    ctx.fillStyle = PAL.cream;
+    ctx.font = '700 18px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('M = Yᵀ X', cx, cy - scale * 2.4);
+
+    hintText = 'step 1 · form M = Yᵀ X (cross-covariance)';
+    hintCls = 's1';
+
+  } else if (name === 'decompose') {
+    // Draw the ellipse (M applied) with U and V principal axes highlighted.
+    drawEllipsePath(ctx, cx, cy, scale, scale, (p) => applyM(p));
+    ctx.fillStyle = withA(PAL.blue, 0.12);
+    ctx.fill();
+    ctx.strokeStyle = PAL.blue;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // V columns (input principal directions)
+    const v1 = [Math.cos(THETA_V), Math.sin(THETA_V)];
+    const v2 = [Math.cos(THETA_V + Math.PI/2), Math.sin(THETA_V + Math.PI/2)];
+    drawArrow(cx, cy, cx + v1[0]*scale, cy - v1[1]*scale, PAL.gold, 2.0);
+    drawArrow(cx, cy, cx + v2[0]*scale, cy - v2[1]*scale, PAL.gold, 2.0);
+
+    // U columns (output principal directions), scaled by sigma
+    const u1Pos = applyM(v1);
+    const u2Pos = applyM(v2);
+    drawArrow(cx, cy, cx + u1Pos[0]*scale, cy - u1Pos[1]*scale, PAL.sage, 2.0);
+    drawArrow(cx, cy, cx + u2Pos[0]*scale, cy - u2Pos[1]*scale, PAL.sage, 2.0);
+
+    // Sigma values
+    const u = easeInOut(local);
+    ctx.fillStyle = withA(PAL.caramel, u);
+    ctx.font = '12px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('σ₁ = ' + SIG1.toFixed(2), 18, h - 80);
+    ctx.fillText('σ₂ = ' + SIG2.toFixed(2), 18, h - 64);
+
+    // Legend
+    ctx.fillStyle = PAL.gold; ctx.fillText('V (input axes)',  w - 130, h - 80);
+    ctx.fillStyle = PAL.sage; ctx.fillText('U (output axes)', w - 130, h - 64);
+
+    hintText = 'step 2 · SVD reveals U, Σ, Vᵀ';
+    hintCls = 's2';
+
+  } else if (name === 'strip') {
+    // The stretching (Σ) is being removed: ellipse morphs back into a (rotated) circle.
+    const u = easeInOut(local);
+    // Interpolate singular values: SIG1 -> 1, SIG2 -> 1
+    const s1 = SIG1 + (1 - SIG1) * u;
+    const s2 = SIG2 + (1 - SIG2) * u;
+    drawEllipsePath(ctx, cx, cy, scale, scale, (p) => {
+      let q = apply(rot(-THETA_V), p);
+      q = [q[0] * s1, q[1] * s2];
+      q = apply(rot(THETA_U), q);
+      return q;
+    });
+    ctx.fillStyle = withA(PAL.caramel, 0.18);
+    ctx.fill();
+    ctx.strokeStyle = PAL.caramel;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // Fading sigma bars
+    ctx.fillStyle = withA(PAL.caramel, 1 - u);
+    ctx.font = '12px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('σ₁ = ' + s1.toFixed(2), 18, h - 80);
+    ctx.fillText('σ₂ = ' + s2.toFixed(2), 18, h - 64);
+
+    hintText = 'step 3 · throw away Σ (set to identity)';
+    hintCls = 's3';
+
+  } else {
+    // Final: pure rotation W = U V^T (no stretching). The circle stays a circle.
+    drawEllipsePath(ctx, cx, cy, scale, scale, (p) => {
+      let q = apply(rot(-THETA_V), p);
+      // identity stretch
+      q = apply(rot(THETA_U), q);
+      return q;
+    });
+    ctx.fillStyle = withA(PAL.sage, 0.18);
+    ctx.fill();
+    ctx.strokeStyle = PAL.sage;
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+
+    // W = UV^T text in the middle
+    ctx.fillStyle = PAL.cream;
+    ctx.font = '700 22px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('W★ = U Vᵀ', cx, cy - scale * 2.4);
+
+    // Soft sage glow
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 3);
+    g.addColorStop(0, 'rgba(149, 176, 120, 0.10)');
+    g.addColorStop(1, 'rgba(149, 176, 120, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    hintText = 'step 4 · W★ = U Vᵀ is the optimal rotation';
+    hintCls = 's4';
+  }
+
+  if (hint.textContent !== hintText) hint.textContent = hintText;
+  hint.className = 'hint ' + hintCls;
+}
+
+function drawArrow(x0, y0, x1, y1, color, lw) {
+  ctx.strokeStyle = color; ctx.lineWidth = lw;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  const a = Math.atan2(y1 - y0, x1 - x0);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - 8 * Math.cos(a - 0.35), y1 - 8 * Math.sin(a - 0.35));
+  ctx.lineTo(x1 - 8 * Math.cos(a + 0.35), y1 - 8 * Math.sin(a + 0.35));
+  ctx.closePath(); ctx.fill();
+}
+
+function loop() { draw(); requestAnimationFrame(loop); }
+
+replay.addEventListener('click', () => { t0 = performance.now(); });
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') t0 = performance.now();
+});
+
+// Phase nav: jump to each step (form, decompose, strip, final)
+const PHASE_STARTS = [0, T_FORM + 0.05, T_FORM + T_DECOMPOSE + 0.05, T_FORM + T_DECOMPOSE + T_STRIP + 0.05];
+const PHASE_LABELS = ['form M', 'SVD', 'strip Σ', 'W = UVᵀ'];
+const PHASE_COLORS = ['#82a8c3', '#c8a838', '#d4895c', '#95b078'];
+const phasenavEl = document.getElementById('phasenav');
+PHASE_STARTS.forEach((tt, i) => {
+  const pip = document.createElement('div');
+  pip.className = 'pip';
+  pip.title = PHASE_LABELS[i];
+  pip.style.color = PHASE_COLORS[i];
+  pip.addEventListener('click', () => { t0 = performance.now() - tt * 1000; });
+  phasenavEl.appendChild(pip);
+});
+const phasePips = phasenavEl.querySelectorAll('.pip');
+setInterval(() => {
+  const t = ((performance.now() - t0) / 1000) % T_LOOP;
+  let active = 0;
+  for (let i = 0; i < PHASE_STARTS.length; i++) if (t >= PHASE_STARTS[i]) active = i;
+  phasePips.forEach((p, i) => p.classList.toggle('active', i === active));
+}, 100);
+
+fit();
+window.addEventListener('resize', fit);
+loop();
+</script>
+</body>
+</html>

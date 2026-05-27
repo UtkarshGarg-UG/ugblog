@@ -12,13 +12,13 @@ cover:
 
 Over years, KL divergence (KLD) is something that can be found in different areas of the Machine learning world. Be it Knowledge Distillation, or Semi-Supervised learning and now even to train LLMs with Reinforcement Learning. In all of these, the goal is always to bring two distributions closer. But there is a subtle difference on how KLD is defined and used. We have Forward KL and Backward KL. In supervised learning setup, forward KL is used and in RL setup, reverse KL is used. In this article, we'll see what Forward and Reverse KL are and what their properties are. We'll investigate in which scenarios it makes sense to use Reverse and Forward KL and also study the reasons behind them. Importantly, we'll explore why forward KL is not suitable for RL setups (where online policy sampling is required) and why reverse KL is not suitable for knowledge distillation (due to mode-seeking behavior and blind spots that lose teacher knowledge).
 
-Don't worry if this sounds abstract—we'll start from the fundamentals. We'll build up from [information theory](#information-in-the-shannon-sense) and [entropy](#entropy), derive the [mathematics of KL divergence](#2-kl-divergence-definition-and-derivation), explore [forward vs reverse KL behaviors](#3-forward-vs-reverse-kl-behaviors-mode-covering-vs-mode-seeking), and by the end you'll have a complete understanding of when and why to use each variant.
+Don't worry if this sounds abstract. We'll start from the fundamentals. We'll build up from [information theory](#information-in-the-shannon-sense) and [entropy](#entropy), derive the [mathematics of KL divergence](#2-kl-divergence-definition-and-derivation), explore [forward vs reverse KL behaviors](#3-forward-vs-reverse-kl-behaviors-mode-covering-vs-mode-seeking), and by the end you'll have a complete understanding of when and why to use each variant.
 
 ## Information (in the Shannon Sense)
 
 Let’s get a working intuition for *information* in the context of information theory. While the term is familiar in everyday language, Claude Shannon gave it a precise mathematical meaning that captures a simple but powerful insight:
 
-> **Information measures surprise** — how much uncertainty is resolved when an event occurs.
+> **Information measures surprise.** It quantifies how much uncertainty is resolved when an event occurs.
 
 If an event is very likely, learning that it happened doesn’t teach you much. But when something *unlikely* occurs, you gain insight. That’s what Shannon formalized with the definition:
 
@@ -30,11 +30,11 @@ Here, \\( p(x) \\) is the probability of an event \\( x \\), and \\( I(x) \\) is
 
 ---
 
-## Why use \\( \log p \\)? An Axiomatic Approach
+### Why use \\( \log p \\)? An Axiomatic Approach
 
 This formula isn’t arbitrary, but it emerges naturally from a few reasonable assumptions about how we expect information to behave. Suppose we define a function \\( I(p) \\) to represent the information content of an event with probability \\( p \\). The requirements are:
 
-### Axiom A1 — Rarity Implies More Information
+#### Axiom A1: Rarity Implies More Information
 
 The rarer an event, the more information it should convey. So \\( I(p) \\) should **decrease** as \\( p \\) increases.
 
@@ -45,7 +45,7 @@ I(1) = 0
 $$
 
 
-### Axiom A2 — Additivity for Independent Events
+#### Axiom A2: Additivity for Independent Events
 
 If two *independent* events occur, say one with probability \\( p \\) and the other with \\( q \\), then the information gained from both should be the **sum** of the individual informations:
 
@@ -56,13 +56,13 @@ $$
 This is essential if we want to talk about how information accumulates across independent events (e.g. flipping a coin twice = 2 bits).
 
 
-### Axiom A3 — Continuity
+#### Axiom A3: Continuity
 
 The function \\( I(p) \\) should behave smoothly. Small changes in probability shouldn’t cause abrupt jumps in information. In other words, \\( I(p) \\) should be **continuous**.
 
 ---
 
-### 🔑 The Only Solution: \\( I(p) = -\log p \\)
+#### 🔑 The Only Solution: \\( I(p) = -\log p \\)
 
 From Axiom A2, we get a functional equation:
 
@@ -84,7 +84,7 @@ $$
 I(p) = -\log_2 p
 $$
 
-This measures information in **bits** — the amount of binary decisions needed to resolve uncertainty.
+This measures information in **bits**, the amount of binary decisions needed to resolve uncertainty.
 
 ## Bits, Information and Probability
 
@@ -96,7 +96,7 @@ As we saw in the previous section on Information, it's definition has a few intu
   I(x) = -\log_2(1) = 0 \text{ bits}
   $$
 
-  You gain nothing — it was expected.
+  You gain nothing. It was expected.
 
 * If an event is **unlikely** (e.g., \\( p = 0.001 \\)), then:
 
@@ -123,11 +123,11 @@ $$
 I(x) = -\log_2(1/1024) = 10 \text{ bits}
 $$
 
-The surprise is greater — and the informational value reflects it.
+The surprise is greater, and the informational value reflects it.
 <iframe
   src= "/entropy-explorer/information.html"
-  width="100%"
-  height="1000"
+  width="90%"
+  height="800"
   style="border:0"
   loading="lazy">
 </iframe>
@@ -147,7 +147,7 @@ Probability can't do this. But information can.
 ## Bottom Line
 
 * **Monotonicity**, **additivity**, and **continuity** lead us directly to \\( I(x) = -\log p(x) \\).
-* The base determines the **unit** — base 2 gives us **bits**.
+* The base determines the **unit**. Base 2 gives us **bits**.
 * Information isn't about "amount of data"; it's about **how unexpected** an event was, and how much it told us.
 
 Once you see this, information theory becomes less about abstract formulas, and more about understanding surprise, learning, and the structure of uncertainty itself.
@@ -168,7 +168,7 @@ $$
 
 Suppose we define a random variable \\(X\\) representing the outcome of a fair coin toss. Naturally, we want to know: on average, how many [bits](#bits-information-and-probability) are needed to encode the outcomes produced by this distribution?
 
-This is exactly what entropy measures — the expected amount of information per event drawn from a distribution.
+This is exactly what entropy measures: the expected amount of information per event drawn from a distribution.
 
 Using Shannon's entropy formula:
 $$
@@ -207,13 +207,13 @@ Notice that in entropy $H(P)$, we use $P$ for **both**:
 1. **Sampling**: which outcomes we expect to see (via $X \sim p$)
 2. **Evaluation**: which probabilities we use to compute information (via $p(X)$)
 
-This dual role of $P$ is crucial. Later, we'll see what happens when we sample from one distribution but evaluate probabilities from a *different* distribution—that's where things get interesting.
+This dual role of $P$ is crucial. Later, we'll see what happens when we sample from one distribution but evaluate probabilities from a *different* distribution. That's where things get interesting.
 
 ---
 
 **Example: Fair Coin**
 
-For a fair coin, both outcomes — heads (H) and tails (T) — have equal probability:
+For a fair coin, both outcomes (heads H and tails T) have equal probability:
 
 $$
 H(X) = -[0.5 \cdot \log_2(0.5) + 0.5 \cdot \log_2(0.5)] = 0.5 \cdot 1 + 0.5 \cdot 1 = 1 \text{ bit}
@@ -226,7 +226,7 @@ Using $\mathbb{E}_{X\sim p}\big[-\log_2 p(X)\big]$:
 * When $X = \text{Tails}$ (happens with probability 0.5): we get $-\log_2(0.5) = 1$ bit
 * **Average**: $0.5 \times 1 + 0.5 \times 1 = 1$ bit
 
-So the entropy of a fair coin toss is 1 bit — which aligns with our intuition: a single binary question (e.g. "Is it heads?") is enough to fully describe the outcome.
+So the entropy of a fair coin toss is 1 bit. This aligns with our intuition: a single binary question (e.g. "Is it heads?") is enough to fully describe the outcome.
 
 But if the coin was biased, 
 
@@ -250,7 +250,7 @@ $$
 $$
 
 
-So, the entropy of this biased coin is approximately 0.469 bits — noticeably less than 1 bit.
+So, the entropy of this biased coin is approximately 0.469 bits, noticeably less than 1 bit.
 
 This makes intuitive sense: if the coin lands heads 90% of the time, the outcome is more predictable. There's less uncertainty, and thus less information gained from each toss.
 
@@ -276,7 +276,7 @@ Imagine you're training a language model to predict the next word. After analyzi
 * **"terrible"**: 40% of the time
 * **"okay"**: 10% of the time
 
-This is the **true distribution** $P$ — how people actually complete this phrase in real data.
+This is the **true distribution** $P$: how people actually complete this phrase in real data.
 
 **First, let's think about entropy** $H(P)$:
 
@@ -296,291 +296,298 @@ You train a language model, but it learns incorrectly. Your model $Q$ thinks peo
 
 Now when you encounter real reviews (drawn from the true distribution $P$):
 
-* 50% of the time, you see "amazing" — your model expected this 90% of the time, so you're *less* surprised than reality warrants ($-\log(0.9) \approx 0.15$ bits vs the true $-\log(0.5) \approx 1$ bit)
-* **40% of the time, you see "terrible"** — but your model only expected this 5% of the time! You're *way more* surprised ($-\log(0.05) \approx 4.32$ bits vs the true $-\log(0.4) \approx 1.32$ bits)
-* 10% of the time, you see "okay" — again, model expected only 5%, so you're more surprised than you should be
+* 50% of the time, you see "amazing". Your model expected this 90% of the time, so you're *less* surprised than reality warrants ($-\log(0.9) \approx 0.15$ bits vs the true $-\log(0.5) \approx 1$ bit)
+* **40% of the time, you see "terrible"**, but your model only expected this 5% of the time! You're *way more* surprised ($-\log(0.05) \approx 4.32$ bits vs the true $-\log(0.4) \approx 1.32$ bits)
+* 10% of the time, you see "okay". Again, the model expected only 5%, so you're more surprised than you should be
 
 The **cross-entropy** $H(P,Q)$ measures your average surprise when:
 * Reality follows the true distribution $P$ (which words actually appear)
 * But you're using your model's wrong probabilities $Q$ to measure surprise
 
-For this example: $H(P,Q) \approx 2.18$ bits — much higher than the entropy of 1.36 bits!
+$$
+H(P,Q) = \mathbb{E}_{x \sim P}\big[-\log_2 Q(x)\big] = -\sum_x P(x)\,\log_2 Q(x)
+$$
 
-The excess surprise (2.18 - 1.36 = 0.82 bits) is the cost of having the wrong model. **This is exactly what "cross-entropy loss" measures when training LLMs** — it penalizes the model for assigning low probabilities to words that actually appear in the training data. By minimizing this cross-entropy, we force the model's predictions $Q$ to better match the true distribution $P$ of the data.
+Read this as: **reality picks the word** (so we average over $P$), and **you bring the surprise meter** (so the term inside is $-\log_2 Q(x)$).
 
-### See It In Action
+**Why $P$ weights but $Q$ sits inside the log.** The weighting is the *frequency of what actually happens*. Reality emits words according to $P$, so we average over $P$. The thing being weighted is *your* surprise, which depends only on what *your* model predicted. When "terrible" appears, your shock is $-\log_2 Q(\text{terrible})$ regardless of the true $P$. You don't get to retroactively un-shock yourself. Cross-entropy is exactly this: reality stays $P$, but the surprise meter is mis-calibrated to $Q$.
 
-Try the interactive visualization below. Watch color-coded particles representing each word floating in a force field:
-- **Left panel (Reality - Distribution P)**: Shows the baseline with calm, steady particle motion — this is what perfect predictions look like
-- **Right panel (Your Model - Distribution Q)**: When your predictions are wrong, particles become CHAOTIC! They explode with speed, glow intensely, and create extreme turbulence proportional to the surprise level
+**Plugging in the numbers** (term = $P(x) \cdot -\log_2 Q(x)$):
 
-Notice the green "P:" values next to each slider showing the true distribution. Adjust the sliders to change your model's predictions. When Q predicts "terrible" at only 5% but it appears 40% of the time, watch the red particles in the right panel go absolutely WILD! Can you calm the chaos by making Q match P?
+| word | $P$ | $Q$ | $-\log_2 Q$ | contribution |
+|---|---|---|---|---|
+| amazing | 0.50 | 0.90 | 0.152 | $0.50 \times 0.152 = 0.076$ |
+| terrible | 0.40 | 0.05 | 4.322 | $0.40 \times 4.322 = 1.729$ |
+| okay | 0.10 | 0.05 | 4.322 | $0.10 \times 4.322 = 0.432$ |
+
+$$
+H(P,Q) \approx 0.076 + 1.729 + 0.432 \approx 2.24 \text{ bits}
+$$
+
+Notice the **"terrible"** row contributes ~1.73 of the 2.24 bits, almost 80% of the total. The model's worst miscalibration (predicting 5% when the truth is 40%) lands on an event that happens *often*, so it dominates the average. A bad prediction on a rare event would barely move the needle.
+
+The excess surprise ($2.24 - 1.36 = 0.88$ bits) is the cost of having the wrong model. **This is exactly what "cross-entropy loss" measures when training LLMs.** It penalizes the model for assigning low probabilities to words that actually appear in the training data. By minimizing this cross-entropy, we force the model's predictions $Q$ to better match the true distribution $P$ of the data.
+
+## KL Divergence: Definition and Derivation
+
+### From Cross-Entropy to KL Divergence
+
+We've seen how [cross-entropy](#cross-entropy) $H(P,Q)$ measures the total surprise when using model $Q$ to predict outcomes from the true distribution $P$. But how much of that surprise is **unavoidable** versus how much is **due to our model being wrong**?
+
+Recall from our [movie review example](#cross-entropy):
+* **Entropy** $H(P) \approx 1.36$ bits: the baseline uncertainty in the true distribution. This our ceiling. We can't do better than this.
+* **Cross-entropy** $H(P,Q) \approx 2.24$ bits: total surprise using our wrong/approximation model
+
+The difference between these, **0.88 bits**, is the **extra cost** of using the wrong model. This is exactly what KL divergence measures.
+
+#### The Key Relationship
+
+$$
+\boxed{D_{\mathrm{KL}}(P\|Q) = H(P, Q) - H(P)}
+$$
+
+**What this tells us:**
+
+* **$H(P)$** is constant (the true distribution doesn't change)
+* **$H(P,Q)$** varies with your model $Q$
+* **KL divergence isolates the "extra surprise"**: the cost of using an imperfect model
+* **Minimizing cross-entropy** $H(P,Q)$ ⟺ **Minimizing KL divergence** $D_{\mathrm{KL}}(P\|Q)$
+
+This is why in machine learning, we can use cross-entropy loss instead of computing KL divergence directly. They have identical gradients!
+
+---
+
+### The Log-Ratio Form
+
+We can also derive KL divergence directly from the relationship above. Start with:
+
+$$
+D_{\mathrm{KL}}(P\|Q) = H(P, Q) - H(P)
+$$
+
+Substitute the definitions of cross-entropy and entropy:
+
+$$
+H(P, Q) = -\sum_x P(x)\log Q(x)
+$$
+
+$$
+H(P) = -\sum_x P(x)\log P(x)
+$$
+
+Plug both in (the two minus signs combine to a plus on the second term):
+
+$$
+D_{\mathrm{KL}}(P\|Q) = -\sum_x P(x)\log Q(x) + \sum_x P(x)\log P(x)
+$$
+
+Both terms share the factor $P(x)$, so combine them into one sum:
+
+$$
+D_{\mathrm{KL}}(P\|Q) = \sum_x P(x)\big[\log P(x) - \log Q(x)\big]
+$$
+
+Apply the log subtraction rule $\log a - \log b = \log\tfrac{a}{b}$:
+
+$$
+\boxed{D_{\mathrm{KL}}(P\|Q) = \sum_x P(x)\log\frac{P(x)}{Q(x)}}
+$$
+
+This is the standard **log-ratio** form. Equivalently, written as an expectation under $P$:
+
+$$
+D_{\mathrm{KL}}(P\|Q) = \mathbb{E}_{x\sim P}\left[\log\frac{P(x)}{Q(x)}\right]
+$$
+
+**Understanding the log-ratio:**
+
+For each event $x$:
+* If $P(x) > Q(x)$: model **underestimates** → positive contribution (penalty)
+* If $P(x) < Q(x)$: model **overestimates** → negative contribution
+* If $P(x) = Q(x)$: perfect match → zero contribution
+
+**Why the $P(x)$ weighting matters.** Each term in the sum is the *log-ratio* (how wrong the model is at $x$) multiplied by $P(x)$ (how often $x$ actually occurs). The model only gets penalized for mistakes on events that reality bothers to produce.
+
+Think of two failure modes:
+
+* **Underestimating a frequent event.** Reality says "this happens 50% of the time" but your model says 1%. The log-ratio $\log(0.5/0.01) \approx 5.6$ is enormous, *and* it gets weighted by $P(x) = 0.5$. Big number times big weight = huge penalty. The loss screams at you to fix this.
+* **Overestimating a rare event.** Reality says "this happens 0.1% of the time" but your model thinks 10%. The log-ratio $\log(0.001/0.1) \approx -4.6$ is large in magnitude (negative, meaning $Q$ is too high), but it's weighted by $P(x) = 0.001$. Tiny weight muffles the penalty. The loss barely notices.
+
+So the loss really only cares about one thing: **don't assign low probability to events that actually happen.** It's much more forgiving about wasting probability mass on events that *don't* happen.
+
+**This is "mode-covering" behavior.** A "mode" is a peak in $P$, a region where probability mass concentrates (a frequent event/word/feature). Forward KL forces $Q$ to *cover every mode of $P$*, because missing one (assigning low $Q$ where $P$ is high) is exactly the failure case it punishes hardest. The cost of doing so is that $Q$ may also spread mass into regions where $P \approx 0$, but as we just saw, that's almost free in forward KL. The result: $Q$ ends up wider than $P$, blurring across all the modes, never confidently picking just one.
+
+**Reverse KL flips the weighting.** Now look at $D_{\mathrm{KL}}(Q\|P) = \sum_x Q(x)\log\frac{Q(x)}{P(x)}$. The log-ratio is inverted ($\log\tfrac{Q}{P}$ instead of $\log\tfrac{P}{Q}$), and each term is weighted by $Q(x)$ instead of $P(x)$. That single change inverts which mistakes get punished.
+
+Take the same two scenarios as before and watch the verdicts swap:
+
+* **Underestimating a frequent event** ($P=0.5$, $Q=0.01$). Forward KL hated this. Reverse KL barely notices. The log-ratio $\log(0.01/0.5) \approx -5.6$ is large in magnitude, but it's weighted by $Q(x) = 0.01$. Tiny weight muffles the penalty. Reverse KL is fine with $Q$ abandoning a real mode of $P$, as long as $Q$ goes to (near) zero there.
+* **Overestimating a rare event** ($P=0.001$, $Q=0.1$). Forward KL barely noticed. Reverse KL hates it. The log-ratio $\log(0.1/0.001) \approx 6.6$ is large, *and* it's weighted by $Q(x) = 0.1$. Big number times meaningful weight = huge penalty. Reverse KL screams at you for putting mass where $P$ says nothing happens.
+
+So reverse KL really only cares about one thing: **don't assign mass to events that don't actually happen.** It's much more forgiving about ignoring real modes of $P$, as long as $Q$ stays out of them entirely.
+
+**This is "mode-seeking" behavior.** If $P$ has two well-separated peaks, $Q$ can earn a low reverse-KL score by parking itself entirely on *one* peak and ignoring the other. Spreading mass into the valley between the peaks (where $P \approx 0$) is exactly the failure case reverse KL punishes hardest, so $Q$ would rather sit narrowly inside a single mode than stretch out to cover both. The result is the mirror image of forward KL: $Q$ ends up narrower than $P$, confident on one mode and blind to the rest.
+
+#### See It: Mode-Covering vs. Mode-Seeking
+
+The demo below makes both directions concrete. The true distribution $P$ (red) is bimodal with peaks at $x = -2$ and $x = 2$. Your model $Q$ (blue) is a single Gaussian, and you control its mean and width with the sliders. The two lower panels plot the per-$x$ contributions of each direction side by side: the orange panel shows $P(x)\log\frac{P(x)}{Q(x)}$ (forward KL, weighted by $P$) and the purple panel shows $Q(x)\log\frac{Q(x)}{P(x)}$ (reverse KL, weighted by $Q$). You can see exactly where each penalty lives.
+
+**Three things to try:**
+
+1. Click **"Mode-cover preset"**. $Q$ becomes wide and centered between the two modes. Forward KL is moderate, but **reverse KL is large**: the purple panel lights up across the central valley, because $Q$ is putting mass at $x \approx 0$ where $P \approx 0$, and reverse KL hates that. Meanwhile the orange (forward) panel stays calm: $Q$ has at least *some* mass on each mode, so $\log\frac{P}{Q}$ never blows up.
+2. Click **"Mode-seek preset"**. $Q$ is narrow and sits on the right mode of $P$. Reverse KL drops to near zero (the purple panel flattens, because $Q$ has stopped putting mass where $P$ is silent), but **forward KL explodes**. The orange panel shows a huge spike at the abandoned left mode of $P$, where $P(x)$ is high but $Q(x) \approx 0$, making $\log\frac{P}{Q}$ blow up.
+3. Try sliding $\sigma_Q$ slowly from 0.6 up to 2.4 with $\mu_Q = 0$. Watch forward KL drop monotonically as $Q$ widens to "cover" both modes, while reverse KL climbs as $Q$ spills more mass into the central valley. The two directions are pulling $Q$ in opposite directions: forward wants width, reverse wants concentration.
 
 <iframe
-  src="/entropy-explorer/cross_entropy.html"
+  src="/entropy-explorer/mode_covering.html"
   width="100%"
-  height="550"
-  style="border:4; margin: 50px 0; display: block;"
+  height="820"
+  style="border:0"
   loading="lazy">
 </iframe>
 
----
-
-### The Mathematics
-
-**The Formula:**
-
-$$
-H(P, Q) = \mathbb{E}_{X\sim P}[-\log Q(X)] = -\sum_x P(x)\,\log Q(x).
-$$
-
-**The key difference from [entropy](#entropy):** In entropy $H(P)$, we used $P$ for both sampling outcomes and measuring surprise. Cross-entropy breaks this:
-* **$X \sim P$**: Sample outcomes from the true distribution $P$ (what actually happens)
-* **$-\log Q(X)$**: Measure surprise using model $Q$'s probabilities (what we predicted)
-
-This becomes the sum: $\sum_x P(x) \cdot [-\log Q(x)]$ — weight each outcome's Q-based surprise by how often it actually occurs under $P$.
-
-**Key Properties:**
-
-* $H(P,Q) = H(P)$ when $Q = P$ (perfect model)
-* $H(P,Q) > H(P)$ when $Q \neq P$ (the worse the approximation, the higher the cross-entropy)
-* Minimizing cross-entropy = making $Q$ closer to $P$
-
-> **Support matching:** $Q(x)$ must be $> 0$ wherever $P(x) > 0$. If your model says an outcome is impossible ($Q(x) = 0$) but it actually happens ($P(x) > 0$), cross-entropy becomes infinite.
+The takeaway: **forward KL would rather have $Q$ be too wide than miss a mode of $P$, while reverse KL would rather have $Q$ be too narrow than place mass where $P$ is silent.** Both preferences fall directly out of which distribution does the weighting in the sum: $P(x)$ punishes missing $P$'s mass, $Q(x)$ punishes wasting $Q$'s own mass on regions $P$ ignores.
 
 ---
 
+## Knowledge Distillation: Why Forward KL is the Default
 
-## 2) KL Divergence: Definition and Derivation
+Knowledge distillation (KD) trains a small "student" model $Q_\theta$ to imitate a larger "teacher" model $P$. The teacher was trained at great cost (compute, data, scale); the student is the cheap deployable version. The question for us is: which direction of KL should the student minimize?
 
-### Definition
+Both choices are well-defined. Let's write them out and follow the consequences.
 
-$$
-D_{\mathrm{KL}}(P\|Q)\;=\;\sum_x P(x)\,\log\frac{P(x)}{Q(x)}.
-$$
+### Forward KL distillation
 
-### Derivation from [cross-entropy](#cross-entropy)
-
-$$
-\begin{aligned}
-D_{\mathrm{KL}}(P\|Q)
-&= \sum_x P(x)\,\log P(x)\;-\;\sum_x P(x)\,\log Q(x) \\
-&= \bigl[-\sum_x P(x)\,\log Q(x)\bigr] \;-\; \bigl[-\sum_x P(x)\,\log P(x)\bigr] \\
-&= H(P, Q) \;-\; H(P).
-\end{aligned}
-$$
-
-* $H(P)$ is a **constant** if $P$ is fixed (e.g., teacher distribution). See the [Entropy](#entropy) section for more details.
-* Minimizing $D_{\mathrm{KL}}(P\|Q)$ ↔ minimizing [cross-entropy](#cross-entropy) $H(P,Q)$.
-
-> KL is **asymmetric**: $D_{\mathrm{KL}}(P\|Q)\neq D_{\mathrm{KL}}(Q\|P)$. The direction matters.
-
----
-
-## 3) Forward vs. Reverse KL: Behaviors (Mode-Covering vs. Mode-Seeking)
-
-### Forward KL (mode-covering)
+Per input $x$, the teacher gives a soft distribution $P(\cdot|x)$ over outputs. Forward KL distillation minimizes the expected $D_{\text{KL}}(P \| Q_\theta)$ across the input distribution:
 
 $$
-D_{\mathrm{KL}}(P\|Q)=\sum_x P(x)\log\frac{P(x)}{Q(x)}=\mathbb{E}_{x\sim P}[\log P(x)-\log Q(x)].
+\mathcal{L}_{\text{FKD}}(\theta) = \mathbb{E}_{x}\left[D_{\text{KL}}(P(\cdot|x) \| Q_\theta(\cdot|x))\right] = \mathbb{E}_{x}\mathbb{E}_{y \sim P(\cdot|x)}\left[\log \frac{P(y|x)}{Q_\theta(y|x)}\right].
 $$
 
-* Weighted by **$P(x)$**. If $P(x)>0$ and $Q(x)\ll P(x)$, the penalty is huge.
-* Strongly discourages **missing any mass** where $P$ is nonzero → **mode-covering**.
+**Reading the nested expectation.** Two averages are stacked here. The outer one, $\mathbb{E}_x[\cdot]$, runs over **inputs**: you have a dataset of inputs (prompts for an LLM, images for a vision model, sentences for a translation model) and you draw an input $x$ from it. The inner one, $\mathbb{E}_{y \sim P(\cdot|x)}[\cdot]$, runs over **outputs**: for that fixed input, the teacher hands you a distribution $P(\cdot|x)$ over possible outputs $y$, and you average over outputs drawn according to that distribution. Read the whole expression as: *"pick an input from your dataset, look at the per-input KL between teacher and student over the output space, then average across inputs."* For an LLM, $x$ is the prefix of a sentence, $P(\cdot|x)$ is the teacher's predicted next-token distribution over the 50K+ vocabulary, and the inner expectation averages across what the teacher considers likely next tokens.
 
-### Reverse KL (mode-seeking)
-
-$$
-D_{\mathrm{KL}}(Q\|P)=\sum_x Q(x)\log\frac{Q(x)}{P(x)}=\mathbb{E}_{x\sim Q}[\log Q(x)-\log P(x)].
-$$
-
-* Weighted by **$Q(x)$**. If $Q(x)=0$ somewhere $P(x)>0$, that point contributes **zero**.
-* Penalizes placing mass where $P\approx 0$, but not for **missing** modes → **mode-seeking**.
-
-### Toy picture (bimodal teacher, unimodal student)
-
-* Teacher $P$: two peaks at $-3$ and $+3$.
-* Student $Q$: one Gaussian.
-
-  * **Forward KL**: inflate variance and center between peaks to **cover both**.
-  * **Reverse KL**: pick **one** peak and ignore the other (mode-seeking).
-
-> For the mathematical details on how these behaviors emerge from the gradients, see [Section 4: Gradients You Actually Optimize](#4-gradients-you-actually-optimize).
-
----
-
-## 4) Gradients You Actually Optimize
-
-### 4.1 Forward KL gradient (low variance)
+Drop the $\log P$ term (constant w.r.t. $\theta$, the student's parameters) and you are left with:
 
 $$
-\begin{aligned}
-D_{\mathrm{KL}}(P\|Q_\theta)&=H(P,Q_\theta)-H(P) \\
-\nabla_\theta D_{\mathrm{KL}}(P\|Q_\theta)
-&= \nabla_\theta H(P,Q_\theta) \\
-&= -\sum_x P(x)\,\nabla_\theta \log Q_\theta(x) \\
-&= -\mathbb{E}_{x\sim P}\bigl[\nabla_\theta \log Q_\theta(x)\bigr].
-\end{aligned}
+\nabla_\theta \mathcal{L}_{\text{FKD}} = -\mathbb{E}_{x}\mathbb{E}_{y \sim P(\cdot|x)}\left[\nabla_\theta \log Q_\theta(y|x)\right].
 $$
 
-* Expectation under **fixed** $P$ → **low-variance**, standard cross-entropy gradient.
-* If $Q_\theta(x)\to 0$ while $P(x)>0$, $\nabla_\theta\log Q_\theta(x)=\frac{\nabla_\theta Q_\theta(x)}{Q_\theta(x)}$ blows up → **strong correction**. This is why forward KL **covers** all teacher modes.
+**This is cross-entropy with soft labels.** For small output spaces (image classification with 10 classes), you sum the soft labels exactly. For huge output spaces (LLM vocab of 50K+, or sequence-level distillation), you sample from the teacher.
 
-### 4.2 Reverse KL gradient via the **log-derivative trick**
+Three things make this objective pleasant to optimize:
 
-Start with
+1. **You sample from $P$**, which is fixed. Once teacher logits are cached, or the teacher runs once per batch, there is no resampling cost as the student updates.
+2. **Low variance.** The gradient is a plain expectation under a fixed distribution. No log-derivative trick, no REINFORCE estimator, no baselines needed.
+3. **Mode-covering safety.** From the [analysis above](#the-log-ratio-form), forward KL punishes the student hardest when $Q_\theta(y|x) \approx 0$ at a $y$ the teacher considers likely. The student is forced to assign at least some mass to every teacher mode, so it cannot accidentally throw away a chunk of teacher knowledge.
 
-$$
-D_{\mathrm{KL}}(Q_\theta\|P)=\sum_x Q_\theta(x)\,\bigl[\log Q_\theta(x)-\log P(x)\bigr].
-$$
+This is Hinton, Vinyals, and Dean's original 2015 KD recipe in modern notation. It is also why distilled BERTs, distilled GPTs, and distilled vision models all use cross-entropy on soft targets: forward KL is the only choice that is both stable and gradient-cheap.
 
-Differentiate:
+### Reverse KL distillation
 
-$$
-\begin{aligned}
-\nabla_\theta D
-&= \sum_x \nabla_\theta Q_\theta(x)\,[\log Q_\theta(x)-\log P(x)]
-\;+\; \sum_x Q_\theta(x)\,\nabla_\theta\log Q_\theta(x).
-\end{aligned}
-$$
-
-Use $\sum_x \nabla_\theta Q_\theta(x)=0$ (probabilities sum to 1), so the second sum vanishes:
+The other direction, $D_{\text{KL}}(Q_\theta \| P)$, gives:
 
 $$
-\nabla_\theta D
-= \sum_x \nabla_\theta Q_\theta(x)\,[\log Q_\theta(x)-\log P(x)].
+\mathcal{L}_{\text{RKD}}(\theta) = \mathbb{E}_{x}\mathbb{E}_{y \sim Q_\theta(\cdot|x)}\left[\log \frac{Q_\theta(y|x)}{P(y|x)}\right].
 $$
 
-Apply the **log-trick** $\nabla_\theta Q_\theta(x)=Q_\theta(x)\,\nabla_\theta\log Q_\theta(x)$:
+Already this looks different from forward KL. The sample $y$ comes from the *student* $Q_\theta$, not the teacher $P$. That single change creates a real obstacle: **the distribution we are averaging over depends on the parameters we are trying to optimize.** If we wiggle $\theta$, two things happen at once: the term inside the brackets changes (since it contains $Q_\theta$), AND the probability of drawing each particular $y$ changes (since we are sampling from $Q_\theta$ itself). A naive gradient that differentiates only the inside misses the second effect entirely.
+
+#### A detour: the log-derivative trick
+
+This is a problem ML hits over and over again. The classical fix is the **log-derivative trick**, also called the **score-function estimator**, also called the **REINFORCE estimator** in reinforcement learning. It is the workhorse identity behind every policy-gradient algorithm (PPO, A2C, TRPO, GRPO), behind variational inference with discrete latents, and now behind reverse-KL distillation.
+
+The setup: you want $\nabla_\theta \mathbb{E}_{y \sim Q_\theta}[f(y)]$ for some function $f$. Expand the expectation as a sum, then differentiate:
 
 $$
-\boxed{
-\nabla_\theta D_{\mathrm{KL}}(Q_\theta\|P)
-= \mathbb{E}_{x\sim Q_\theta}
-\Big[(\log Q_\theta(x)-\log P(x))\,\nabla_\theta\log Q_\theta(x)\Big].
-}
+\nabla_\theta \sum_y Q_\theta(y) f(y) = \sum_y \big(\nabla_\theta Q_\theta(y)\big) f(y).
 $$
 
-* This is a **REINFORCE-style** estimator: you must **sample from $Q_\theta$**.
-* If $Q_\theta(x)\approx 0$, that $x$ is **never sampled** → **zero-gradient blind spot**.
-
----
-
-## 5) Blind Spots and Variance (Why Reverse KL Is Tricky)
-
-### Zero-gradient blind spots
-
-* If $P(x)>0$ but $Q_\theta(x)=0$, the reverse-KL gradient at $x$ is zero because you never sample that $x$ from $Q_\theta$.
-* The student may **never learn** that token even though the teacher says it matters.
-
-### Variance explosion
-
-* Reverse-KL gradient uses random samples from an **evolving** student distribution and a “reward” $\log Q-\log P$ that can swing widely → **high variance**, needs baselines/huge batches/clipping.
-* Forward-KL gradient samples from **fixed** $P$ and is just cross-entropy → **low variance** and **sample-efficient**.
-
----
-
-## 6) Knowledge Distillation: Why Forward KL Wins
-
-**Setup:** Teacher $P(\cdot\mid\text{context})$ gives soft targets; Student $Q_\theta$ tries to match them.
-
-* **Objective:** minimize $D_{\mathrm{KL}}(P\|Q_\theta)=H(P,Q_\theta)-H(P)$ ([forward KL](#3-forward-vs-reverse-kl-behaviors-mode-covering-vs-mode-seeking)).
-* **Gradient:** $-\mathbb{E}_{x\sim P}\nabla_\theta\log Q_\theta(x)$ (see [gradient derivation](#41-forward-kl-gradient-low-variance)).
-* **Properties:** stable, low-variance, **mode-covering** (no blind spots), trivial to implement (it's the usual [cross-entropy](#cross-entropy)).
-
-> **What about the [entropy](#entropy) term $H(P)$?** It's a constant w\.r.t. $\theta$ and doesn't affect gradients—you don't try to "increase" or "decrease" it during student training.
-
----
-
-## 7) “We only want task-relevant modes.” Do we need reverse KL?
-
-Often you **don’t** want the student to copy *every* quirk of the teacher—you want **task adaptation**. You still don’t need pure reverse KL. Better options:
-
-* **Filter / reweight the teacher** on your task data: compute a **task-conditioned teacher** $P_{\text{task}}$ (e.g., mask or down-weight unwanted tokens, sharpen on desired ones) and minimize **forward KL** $D_{\mathrm{KL}}(P_{\text{task}}\|Q)$. You retain low variance while focusing learning where it matters.
-* **Temperature & top-p/k** on teacher outputs to emphasize salient modes, then forward-KL.
-* **Focal/importance weighting** of the cross-entropy.
-* **α-divergences / Rényi**: interpolate between mode-covering and mode-seeking without jumping to pure reverse KL.
-
----
-
-## 8) PPO on a KL-only reward = Reverse-KL Minimization
-
-Suppose you ignore task rewards and set the PPO reward to
+Now use the identity $\nabla_\theta Q_\theta(y) = Q_\theta(y) \nabla_\theta \log Q_\theta(y)$ (which is just $\nabla \log u = \nabla u / u$ rearranged) to put $Q_\theta(y)$ back as a sampling weight:
 
 $$
-r(x)=\log P(x)-\log Q_\theta(x).
+= \sum_y Q_\theta(y) \, f(y) \, \nabla_\theta \log Q_\theta(y) = \mathbb{E}_{y \sim Q_\theta}\big[f(y) \, \nabla_\theta \log Q_\theta(y)\big].
 $$
 
-PPO's policy-gradient (ignoring clipping for clarity, see [reverse KL gradient](#42-reverse-kl-gradient-via-the-log-derivative-trick)) is
+**The intuition.** The gradient *raises the log-probability of samples where $f(y)$ is large and lowers it where $f(y)$ is small.* Think of $f$ as a "reward signal" weighting how strongly each sample should be reinforced or suppressed. This is exactly the policy-gradient intuition: take actions that paid off, take fewer actions that did not. Same math, different label.
+
+The catch is variance. Because $y$ is random and $f(y)$ can swing widely from sample to sample, the estimator $f(y) \nabla_\theta \log Q_\theta(y)$ can be very noisy. You usually need either a baseline $b$ (subtracting $b$ from $f(y)$ does not change the expectation but can shrink variance dramatically) or large batches to average the noise out. Hold on to this. It comes back as the central practical issue.
+
+#### Applying it to reverse KL
+
+Inside the brackets of $\mathcal{L}_{\text{RKD}}$ we have $f(y) = \log Q_\theta(y|x) - \log P(y|x)$. This is *almost* the setup we just handled, except $f$ itself depends on $\theta$ through the $\log Q_\theta$ term. Differentiate the full expectation $\sum_y Q_\theta(y) f(y)$ with the product rule and you get two terms:
 
 $$
-\nabla_\theta J=\mathbb{E}_{x\sim Q_\theta}\big[A(x)\,\nabla_\theta\log Q_\theta(x)\big],
+\nabla_\theta \sum_y Q_\theta(y) f(y) = \underbrace{\sum_y \big(\nabla_\theta Q_\theta(y)\big) f(y)}_{\text{log-derivative trick gives } \mathbb{E}[f \, \nabla\log Q]} + \underbrace{\sum_y Q_\theta(y) \, \nabla_\theta f(y)}_{\text{extra term from } f \text{ depending on } \theta}.
 $$
 
-with $A(x)=r(x)-b$. Since $\mathbb{E}_{x\sim Q}[\nabla_\theta\log Q]=0$, the baseline term drops and
+The first term is exactly the log-derivative-trick result we just derived. The second term simplifies beautifully: $\nabla_\theta f(y) = \nabla_\theta \log Q_\theta(y)$ (the $\log P$ piece does not depend on $\theta$), so the second term is $\sum_y Q_\theta(y) \nabla_\theta \log Q_\theta(y) = \sum_y \nabla_\theta Q_\theta(y) = \nabla_\theta \sum_y Q_\theta(y) = \nabla_\theta 1 = 0$. It vanishes because probabilities sum to one.
+
+We are left with:
 
 $$
-\nabla_\theta J
-=\mathbb{E}_{x\sim Q_\theta}\big[(\log P(x)-\log Q_\theta(x))\,\nabla_\theta\log Q_\theta(x)\big]
-= -\,\nabla_\theta D_{\mathrm{KL}}(Q_\theta\|P).
+\nabla_\theta \mathcal{L}_{\text{RKD}} = \mathbb{E}_{x}\mathbb{E}_{y \sim Q_\theta(\cdot|x)}\left[\big(\log Q_\theta(y|x) - \log P(y|x)\big) \nabla_\theta \log Q_\theta(y|x)\right].
 $$
 
-So PPO on this reward **maximizes** $J$ $\Longleftrightarrow$ **minimizes** reverse KL. It inherits reverse-KL’s drawbacks: **high variance**, **blind spots**, **mode-seeking**, and **lower sample-efficiency** than forward-KL distillation when you already have teacher samples.
+This is exactly a REINFORCE-style policy gradient with effective "reward" $-(\log Q_\theta - \log P)$, which is large and positive whenever the student is putting much more mass on $y$ than the teacher does. The training loop is now: sample some outputs from the student, compute that reward for each, weight the per-sample score function $\nabla_\theta \log Q_\theta$ by the reward, and take a step. Same shape as PPO.
 
----
+#### What goes wrong in practice
 
-## 9) Interpreting the Magnitude of KL
+With the derivation in hand, three issues immediately surface:
 
-* $D_{\mathrm{KL}}(\cdot\|\cdot)\ge 0$; it’s $0$ iff $P=Q$.
-* Not symmetric; no triangle inequality (not a metric).
-* **Forward KL large** → the student **underestimates** regions the teacher cares about.
-* **Reverse KL large** → the student **over-allocates** mass where the teacher says probability is tiny/zero.
-* Can be **infinite** if support mismatch occurs (e.g., $P(x)>0$ but $Q(x)=0$ for forward KL).
+1. **You sample from $Q_\theta$**, which keeps moving. Every gradient step changes the sampling distribution, so samples from the previous step are stale. For sequence models this means actually *generating* from the student each batch, which is expensive.
+2. **High variance.** The "reward" $\log Q_\theta - \log P$ can swing widely across samples, especially early in training when student and teacher disagree on most of the space. Practical implementations need baselines, large batches, or clipping to make the gradient usable.
+3. **Zero-gradient blind spots.** If $Q_\theta(y|x) \approx 0$ for some $y$, that $y$ is never sampled, so it contributes nothing to the gradient. The per-$x$ contribution carries a factor of $Q(y)$ in front, and when $Q(y) = 0$, no signal reaches the student. The student can permanently ignore an entire teacher mode and the loss will not complain.
 
----
+The third issue is the deal-breaker for classical KD. The whole point of distillation is to transfer the teacher's knowledge into the student. Reverse KL keeps the teacher knowledge the student already partially has, and *silently discards* anything it does not. There is no mechanism by which "the teacher cares about this region but I do not" gets corrected.
 
-## 10) Applications You’ll See in Practice
+### A toy example to make the blind spot concrete
 
-* **Supervised learning**: cross-entropy ⇔ minimizing $D_{\mathrm{KL}}(P\|Q)$.
-* **Knowledge distillation**: forward KL to match teacher soft labels.
-* **Variational inference**: often minimize $D_{\mathrm{KL}}(Q\|P)$ for tractability (mode-seeking is sometimes acceptable).
-* **RL**: policy updates regularized by KL to prevent large steps (e.g., TRPO/PPO).
-* **VAEs**: KL regularizes latent posteriors against a prior.
+Teacher distribution over three outputs:
+$$P(\text{A}) = 0.49,\quad P(\text{B}) = 0.49,\quad P(\text{C}) = 0.02.$$
 
----
+Student initialization (a common early-training pathology where the student picks one mode):
+$$Q(\text{A}) = 0.98,\quad Q(\text{B}) = 0.02,\quad Q(\text{C}) = 0.$$
 
-## 11) Frequently Asked Clarifications
+**Forward KL contribution for C:** $0.02 \cdot \log(0.02 / 0) \to \infty$. The loss is infinite, or numerically enormous with epsilons, and the gradient pushes $Q(\text{C})$ up immediately.
 
-* **“Why is the reverse-KL gradient zero at $Q(x)=0$?”**
-  Because the gradient is an **expectation under $Q$**; events with $Q(x)=0$ are never sampled, contributing no gradient. (And the analytic term contains a factor $Q(x)$.)
-* **“Does forward-KL have smaller gradient variance?”**
-  Yes—samples come from fixed $P$, and the gradient is a plain cross-entropy expectation.
-* **“What if I want ‘mode-seeking’ behavior?”**
-  Prefer **task-conditioned forward KL** (filter/weight teacher) or **α-divergences**; avoid pure reverse KL in supervised distillation unless you accept its variance and blind-spot issues.
+**Reverse KL contribution for C:** $Q(\text{C}) \cdot \log(Q(\text{C})/P(\text{C})) = 0 \cdot \log(0/0.02) = 0$. The loss does not notice. The student happily stays on A forever, ignoring both B (which the teacher considers equally important) and C entirely.
 
----
+Forward KL is the safer choice when your goal is to faithfully copy the teacher's distribution. Reverse KL converges to *a* solution that is locally consistent with $P$, but it does not have to be the *right* solution.
 
-## 12) Mini Worked Example (discrete)
+### The classical verdict
 
-Teacher $P$:
-$\;P(\text{A})=0.49,\;P(\text{B})=0.49,\;P(\text{C})=0.02.$
+For traditional KD, like image classification with a few hundred classes, or BERT distillation with masked-token targets, anywhere the teacher's full soft distribution is available and the goal is faithful transfer, forward KL wins decisively. Lower variance, no blind spots, samples from a fixed distribution, gradient is just cross-entropy. There is no contest.
 
-Student init $Q$:
-$\;Q(\text{A})=0.98,\;Q(\text{B})=0.02,\;Q(\text{C})=0.$
+This is why basically every distillation paper before roughly 2023 uses forward KL (cross-entropy with soft labels), often with a temperature softening of $P$ to make the soft targets more informative. See Hinton, Vinyals, Dean (2015) for the original, and Sanh et al. (2019, DistilBERT) or Jiao et al. (2020, TinyBERT) for canonical LLM-era examples. All forward KL.
 
-* **Forward KL**: term for C is $0.02\log(0.02/0)\to\infty$ → huge gradient to increase $Q(\text{C})$. Student **covers** C.
-* **Reverse KL**: term for C is $Q(\text{C})\log(Q/P)=0\cdot(\cdot)=0$ → **no gradient** for C. Student can happily ignore C (mode-seeking).
+### The LLM twist: when reverse KL becomes interesting
 
----
+The classical analysis quietly assumes you *want* the student to match every detail of the teacher. For autoregressive LLM distillation, that assumption starts to break.
 
-## 13) Summary Cheat-Sheet
+The issue is the **long tail** of LLM token distributions. At each generation step, the teacher's softmax over 50K+ vocabulary tokens has a small number of high-probability tokens (the modes you want to learn) and a long tail of low-probability tokens that are mostly noise: alternate phrasings, slightly off-topic continuations, plausible-but-suboptimal next words.
 
-* **[Entropy](#entropy)**: $H(P)=-\sum P\log P$.
-* **[Forward KL](#forward-kl-mode-covering)**: $D(P\|Q)=H(P,Q)-H(P)$. [Low-variance gradients](#41-forward-kl-gradient-low-variance), **mode-covering**, needs **support matching** (finite only if $Q>0$ where $P>0$).
-* **[Reverse KL](#reverse-kl-mode-seeking)**: $D(Q\|P)$ with [gradient](#42-reverse-kl-gradient-via-the-log-derivative-trick)
-  $\mathbb{E}_{x\sim Q}[(\log Q-\log P)\nabla\log Q]$. **Mode-seeking**, **[blind spots](#5-blind-spots-and-variance-why-reverse-kl-is-tricky)**, **high variance**.
-* **[Distillation](#6-knowledge-distillation-why-forward-kl-wins)**: Use **forward KL** ([cross-entropy](#cross-entropy)). To focus on task-relevant modes, **filter/weight the teacher** and still use forward KL.
-* **[PPO on KL reward](#8-ppo-on-a-kl-only-reward--reverse-kl-minimization)**: exactly minimizes **reverse KL**; inherits its downsides for supervised settings.
-* **Magnitude of KL**: "how mismatched," but direction matters; can be infinite with support mismatch.
+Forward KL does not distinguish modes from noise. It says: match the entire distribution, including the long tail. For a small student with limited capacity, this means spreading probability mass thin across the tail. At inference time, sampling from a too-flat distribution produces hallucinated content. The tokens the student "covered" because the teacher gave them $10^{-4}$ probability turn into actual generation choices once the student is deployed, and many of them are not good choices.
 
-If you want, I can add a small code snippet that numerically compares gradient variance for forward vs. reverse KL on a toy problem.
+**MiniLLM** (Gu et al., 2024) makes this case explicitly. They argue that reverse KL is preferable for LLM distillation precisely *because* its mode-seeking behavior lets the student ignore the teacher's long tail. The student concentrates on high-probability behaviors, generates more focused and less hallucinated outputs, and tolerates being meaningfully smaller than the teacher.
+
+To deal with the gradient-variance and blind-spot problems, MiniLLM borrows from RL: policy-gradient style updates, single-step regularization to keep the student close to the teacher (preventing total mode collapse), and length-normalization. The implementation is much more complex than forward KL distillation, but the generation quality at small scales is meaningfully better.
+
+### Beyond the binary
+
+Forward KL and reverse KL are just two points on a spectrum of divergences. Several recent papers explore the middle ground:
+
+- **GKD** (Agarwal et al., 2024), "On-Policy Distillation of Language Models", reframes the problem. The real issue is not the KL direction, it is the **distribution mismatch** between training-time samples (teacher) and inference-time samples (student). GKD uses on-policy student samples but evaluates with a generalized JSD that interpolates between forward and reverse. With the right interpolation parameter, you get low variance, no blind spots, and student-sample exposure that fixes the inference-time mismatch.
+- **f-DISTILL** (Wen et al., 2023) generalizes to arbitrary f-divergences, of which forward KL, reverse KL, JSD, and total variation are all special cases. The empirical sweet spot is often somewhere between forward and reverse rather than at either extreme.
+- **DistiLLM** (Ko et al., 2024) uses *skew-KL* variants, interpolating $P$ and $Q$ inside the log to bound variance and prevent the blind-spot pathology without giving up the mode-seeking benefit.
+
+The common thread: pure reverse KL has real benefits for LLM distillation, but its drawbacks are real too, and modern recipes pay extra mathematical cost to extract the benefits without inheriting the drawbacks.
+
+### Practical recipe
+
+If you are distilling a model and want a working answer:
+
+- **Classification, regression, structured prediction with full soft labels available:** Use forward KL (cross-entropy with soft targets). Add temperature if the teacher is overconfident. This is the right answer most of the time.
+- **Sequence-level LLM distillation, want maximum quality, willing to invest engineering effort:** Look at GKD or MiniLLM. Expect to spend much more compute and tuning than vanilla forward KL.
+- **You want a quick baseline for any LLM distillation task:** Forward KL on teacher samples. It is not optimal but it is robust and easy to debug. Iterate from there.
+
+The deeper takeaway is that **the "correct" KL direction depends on what you are using the student for.** If you want faithful posterior matching, forward KL. If you want a deployable model that generates well in practice and you will tolerate losing some teacher diversity, reverse KL or its descendants. The choice is a product decision as much as a mathematical one.

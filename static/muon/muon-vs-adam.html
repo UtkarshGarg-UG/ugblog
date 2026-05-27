@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Muon vs Adam Optimizer Race</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 25px;
+            color: #58a6ff;
+        }
+
+        .race-container {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+        }
+
+        .panel.adam {
+            border-color: #f0883e;
+        }
+
+        .panel.muon {
+            border-color: #3fb950;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .panel-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .panel.adam .panel-title {
+            color: #f0883e;
+        }
+
+        .panel.muon .panel-title {
+            color: #3fb950;
+        }
+
+        .panel-subtitle {
+            font-size: 0.8rem;
+            color: #8b949e;
+        }
+
+        canvas {
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .stat {
+            background: #0d1117;
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #8b949e;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1rem;
+            margin-top: 3px;
+        }
+
+        .panel.adam .stat-value {
+            color: #f0883e;
+        }
+
+        .panel.muon .stat-value {
+            color: #3fb950;
+        }
+
+        .winner-badge {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 12px;
+            padding: 20px 30px;
+            text-align: center;
+            display: none;
+            z-index: 10;
+        }
+
+        .winner-badge.show {
+            display: block;
+        }
+
+        .winner-badge .icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .winner-badge .text {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .panel.muon .winner-badge {
+            border: 2px solid #3fb950;
+        }
+
+        .panel.muon .winner-badge .text {
+            color: #3fb950;
+        }
+
+        .panel.adam .winner-badge {
+            border: 2px solid #f0883e;
+        }
+
+        .panel.adam .winner-badge .text {
+            color: #f0883e;
+        }
+
+        .controls {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            color: #8b949e;
+            min-width: 150px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            max-width: 200px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            min-width: 60px;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .btn-primary {
+            background: #238636;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2ea043;
+        }
+
+        .btn-primary.running {
+            background: #f85149;
+        }
+
+        .btn-secondary {
+            background: #30363d;
+            color: #c9d1d9;
+        }
+
+        .btn-secondary:hover {
+            background: #3c444d;
+        }
+
+        .algo-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 15px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.75rem;
+            color: #8b949e;
+        }
+
+        .algo-box .highlight {
+            color: #7ee787;
+        }
+
+        .explanation {
+            background: rgba(63, 185, 80, 0.1);
+            border: 1px solid rgba(63, 185, 80, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .explanation strong {
+            color: #3fb950;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Muon vs Adam: Optimizer Race</h2>
+
+        <div class="race-container">
+            <div class="panel adam">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Adam</div>
+                        <div class="panel-subtitle">Adaptive learning rates</div>
+                    </div>
+                </div>
+                <canvas id="canvas-adam" width="350" height="300"></canvas>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-label">Steps</div>
+                        <div class="stat-value" id="steps-adam">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Loss</div>
+                        <div class="stat-value" id="loss-adam">—</div>
+                    </div>
+                </div>
+
+                <div class="algo-box">
+                    m = β₁m + (1-β₁)g<br>
+                    v = β₂v + (1-β₂)g²<br>
+                    θ = θ - η·m/√v
+                </div>
+
+                <div class="winner-badge" id="winner-adam">
+                    <div class="icon">🏆</div>
+                    <div class="text">Converged!</div>
+                </div>
+            </div>
+
+            <div class="panel muon">
+                <div class="panel-header">
+                    <div>
+                        <div class="panel-title">Muon</div>
+                        <div class="panel-subtitle">Orthogonalized momentum</div>
+                    </div>
+                </div>
+                <canvas id="canvas-muon" width="350" height="300"></canvas>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-label">Steps</div>
+                        <div class="stat-value" id="steps-muon">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Loss</div>
+                        <div class="stat-value" id="loss-muon">—</div>
+                    </div>
+                </div>
+
+                <div class="algo-box">
+                    m = βm + g<br>
+                    <span class="highlight">m̃ = orthogonalize(m)</span><br>
+                    θ = θ - η·m̃
+                </div>
+
+                <div class="winner-badge" id="winner-muon">
+                    <div class="icon">🏆</div>
+                    <div class="text">Converged!</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <label>Condition Number (κ):</label>
+                <input type="range" id="kappa" min="5" max="50" step="1" value="20">
+                <span class="value" id="kappa-val">20</span>
+            </div>
+
+            <div class="control-row">
+                <label>Adam Learning Rate:</label>
+                <input type="range" id="lr-adam" min="0.01" max="0.5" step="0.01" value="0.15">
+                <span class="value" id="lr-adam-val">0.15</span>
+            </div>
+
+            <div class="control-row">
+                <label>Muon Learning Rate:</label>
+                <input type="range" id="lr-muon" min="0.01" max="0.3" step="0.01" value="0.12">
+                <span class="value" id="lr-muon-val">0.12</span>
+            </div>
+
+            <div class="button-row">
+                <button class="btn-primary" id="run-btn">▶ Race!</button>
+                <button class="btn-secondary" id="reset-btn">↺ Reset</button>
+            </div>
+        </div>
+
+        <div class="explanation">
+            <strong>Why Muon Wins:</strong> Adam adapts learning rates per-parameter based on gradient history,
+            but still struggles with ill-conditioned gradients. Muon directly fixes the conditioning by orthogonalizing
+            the momentum — all directions get equal update magnitude, eliminating oscillation and enabling direct progress
+            toward the minimum.
+        </div>
+    </div>
+
+    <script>
+        const adamCanvas = document.getElementById('canvas-adam');
+        const muonCanvas = document.getElementById('canvas-muon');
+        const adamCtx = adamCanvas.getContext('2d');
+        const muonCtx = muonCanvas.getContext('2d');
+
+        let kappa = 20;
+        let lrAdam = 0.15;
+        let lrMuon = 0.12;
+
+        const startPos = [3, 2.5];
+        let thetaAdam, thetaMuon;
+        let mAdam, vAdam, mMuon;  // Optimizer states
+        let trajAdam, trajMuon;
+        let stepsAdam, stepsMuon;
+        let adamConverged, muonConverged;
+        let running = false;
+        let intervalId = null;
+
+        const beta1 = 0.9, beta2 = 0.999, eps = 1e-8;
+        const muonBeta = 0.95;
+
+        function loss(t) {
+            return 0.5 * (kappa * t[0] * t[0] + t[1] * t[1]);
+        }
+
+        function gradient(t) {
+            return [kappa * t[0], t[1]];
+        }
+
+        function orthogonalize(g) {
+            // Simulating what matrix orthogonalization does:
+            // It equalizes the singular values, meaning each direction
+            // gets the same update magnitude regardless of gradient size.
+            // For a 2D vector in an ill-conditioned space, this means
+            // normalizing each component to have equal contribution.
+            const g0 = Math.abs(g[0]) > 1e-10 ? Math.sign(g[0]) : 0;
+            const g1 = Math.abs(g[1]) > 1e-10 ? Math.sign(g[1]) : 0;
+
+            // Scale to have unit norm for fair comparison
+            const norm = Math.sqrt(g0 * g0 + g1 * g1);
+            if (norm < 1e-10) return [0, 0];
+            return [g0 / norm, g1 / norm];
+        }
+
+        function drawLandscape(ctx, trajectory, color, theta) {
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const scale = 40;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Contours
+            const levels = [0.5, 1, 2, 4, 8, 16, 32];
+            levels.forEach((level, i) => {
+                ctx.strokeStyle = `rgba(88, 166, 255, ${0.1 + i * 0.03})`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                const a = Math.sqrt(2 * level / kappa);
+                const b = Math.sqrt(2 * level);
+                for (let t = 0; t <= 2 * Math.PI + 0.1; t += 0.05) {
+                    const x = a * Math.cos(t);
+                    const y = b * Math.sin(t);
+                    if (t === 0) ctx.moveTo(cx + x * scale, cy - y * scale);
+                    else ctx.lineTo(cx + x * scale, cy - y * scale);
+                }
+                ctx.stroke();
+            });
+
+            // Minimum
+            ctx.fillStyle = '#3fb950';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 5, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Trajectory
+            if (trajectory.length > 1) {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                trajectory.forEach((p, i) => {
+                    const sx = cx + p[0] * scale;
+                    const sy = cy - p[1] * scale;
+                    if (i === 0) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                });
+                ctx.stroke();
+
+                // Dots
+                trajectory.forEach((p, i) => {
+                    if (i % 2 === 0 || i === trajectory.length - 1) {
+                        const sx = cx + p[0] * scale;
+                        const sy = cy - p[1] * scale;
+                        ctx.fillStyle = i === trajectory.length - 1 ? color : `${color}80`;
+                        ctx.beginPath();
+                        ctx.arc(sx, sy, i === trajectory.length - 1 ? 5 : 3, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                });
+            }
+        }
+
+        function reset() {
+            stopRunning();
+
+            thetaAdam = [...startPos];
+            thetaMuon = [...startPos];
+            mAdam = [0, 0];
+            vAdam = [0, 0];
+            mMuon = [0, 0];
+            trajAdam = [[...thetaAdam]];
+            trajMuon = [[...thetaMuon]];
+            stepsAdam = 0;
+            stepsMuon = 0;
+            adamConverged = false;
+            muonConverged = false;
+
+            document.getElementById('winner-adam').classList.remove('show');
+            document.getElementById('winner-muon').classList.remove('show');
+
+            draw();
+            updateStats();
+        }
+
+        function stepAdam() {
+            if (adamConverged) return;
+
+            const g = gradient(thetaAdam);
+
+            // Adam update
+            mAdam[0] = beta1 * mAdam[0] + (1 - beta1) * g[0];
+            mAdam[1] = beta1 * mAdam[1] + (1 - beta1) * g[1];
+            vAdam[0] = beta2 * vAdam[0] + (1 - beta2) * g[0] * g[0];
+            vAdam[1] = beta2 * vAdam[1] + (1 - beta2) * g[1] * g[1];
+
+            // Bias correction
+            const t = stepsAdam + 1;
+            const mHat = [mAdam[0] / (1 - Math.pow(beta1, t)), mAdam[1] / (1 - Math.pow(beta1, t))];
+            const vHat = [vAdam[0] / (1 - Math.pow(beta2, t)), vAdam[1] / (1 - Math.pow(beta2, t))];
+
+            thetaAdam[0] -= lrAdam * mHat[0] / (Math.sqrt(vHat[0]) + eps);
+            thetaAdam[1] -= lrAdam * mHat[1] / (Math.sqrt(vHat[1]) + eps);
+
+            trajAdam.push([...thetaAdam]);
+            stepsAdam++;
+
+            if (loss(thetaAdam) < 0.01) {
+                adamConverged = true;
+                if (!muonConverged) {
+                    document.getElementById('winner-adam').classList.add('show');
+                }
+            }
+        }
+
+        function stepMuon() {
+            if (muonConverged) return;
+
+            const g = gradient(thetaMuon);
+
+            // Momentum update
+            mMuon[0] = muonBeta * mMuon[0] + g[0];
+            mMuon[1] = muonBeta * mMuon[1] + g[1];
+
+            // Orthogonalize
+            const mOrth = orthogonalize(mMuon);
+
+            thetaMuon[0] -= lrMuon * mOrth[0];
+            thetaMuon[1] -= lrMuon * mOrth[1];
+
+            trajMuon.push([...thetaMuon]);
+            stepsMuon++;
+
+            if (loss(thetaMuon) < 0.01) {
+                muonConverged = true;
+                if (!adamConverged) {
+                    document.getElementById('winner-muon').classList.add('show');
+                }
+            }
+        }
+
+        function doStep() {
+            stepAdam();
+            stepMuon();
+            draw();
+            updateStats();
+
+            if ((adamConverged && muonConverged) || stepsAdam > 300) {
+                stopRunning();
+            }
+        }
+
+        function draw() {
+            drawLandscape(adamCtx, trajAdam, '#f0883e', thetaAdam);
+            drawLandscape(muonCtx, trajMuon, '#3fb950', thetaMuon);
+        }
+
+        function updateStats() {
+            document.getElementById('steps-adam').textContent = stepsAdam;
+            document.getElementById('steps-muon').textContent = stepsMuon;
+            document.getElementById('loss-adam').textContent = loss(thetaAdam).toFixed(4);
+            document.getElementById('loss-muon').textContent = loss(thetaMuon).toFixed(4);
+        }
+
+        function startRunning() {
+            if (running) return;
+            running = true;
+            document.getElementById('run-btn').textContent = '⏸ Pause';
+            document.getElementById('run-btn').classList.add('running');
+            intervalId = setInterval(doStep, 50);
+        }
+
+        function stopRunning() {
+            running = false;
+            document.getElementById('run-btn').textContent = '▶ Race!';
+            document.getElementById('run-btn').classList.remove('running');
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+        }
+
+        // Event listeners
+        document.getElementById('kappa').addEventListener('input', e => {
+            kappa = parseFloat(e.target.value);
+            document.getElementById('kappa-val').textContent = kappa;
+            reset();
+        });
+
+        document.getElementById('lr-adam').addEventListener('input', e => {
+            lrAdam = parseFloat(e.target.value);
+            document.getElementById('lr-adam-val').textContent = lrAdam.toFixed(2);
+        });
+
+        document.getElementById('lr-muon').addEventListener('input', e => {
+            lrMuon = parseFloat(e.target.value);
+            document.getElementById('lr-muon-val').textContent = lrMuon.toFixed(2);
+        });
+
+        document.getElementById('run-btn').addEventListener('click', () => {
+            if (running) stopRunning();
+            else startRunning();
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', reset);
+
+        reset();
+    </script>
+</body>
+</html>

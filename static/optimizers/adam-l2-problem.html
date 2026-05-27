@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Why Adam + L2 is Broken</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            text-align: center;
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        h2 {
+            color: #ff6b6b;
+            font-size: 1.3rem;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 0.85rem;
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .visualization-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            gap: 15px;
+        }
+
+        .weights-display {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .weight-box {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px 25px;
+            text-align: center;
+            min-width: 200px;
+        }
+
+        .weight-box.large-grad {
+            border: 2px solid #ff6b6b;
+        }
+
+        .weight-box.small-grad {
+            border: 2px solid #4fc3f7;
+        }
+
+        .weight-box h4 {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 8px;
+        }
+
+        .weight-box .value {
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .weight-box.large-grad .value {
+            color: #ff6b6b;
+        }
+
+        .weight-box.small-grad .value {
+            color: #4fc3f7;
+        }
+
+        .weight-box .sub {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .canvas-row {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            min-height: 0;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .canvas-container canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .canvas-label {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.9rem;
+            font-weight: bold;
+            padding: 5px 15px;
+            border-radius: 20px;
+            z-index: 10;
+        }
+
+        .canvas-label.large-grad {
+            background: rgba(255, 107, 107, 0.3);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 107, 107, 0.5);
+        }
+
+        .canvas-label.small-grad {
+            background: rgba(79, 195, 247, 0.3);
+            color: #4fc3f7;
+            border: 1px solid rgba(79, 195, 247, 0.5);
+        }
+
+        .decay-indicator {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            z-index: 10;
+        }
+
+        .decay-indicator .label {
+            color: #888;
+            font-size: 0.7rem;
+        }
+
+        .decay-indicator .rate {
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-weight: bold;
+        }
+
+        .decay-indicator.suppressed .rate {
+            color: #ff6b6b;
+        }
+
+        .decay-indicator.amplified .rate {
+            color: #4fc3f7;
+        }
+
+        .right-panel {
+            width: 350px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+        }
+
+        .problem-section {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid rgba(255, 107, 107, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+        }
+
+        .problem-section h3 {
+            color: #ff6b6b;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+
+        .problem-section p {
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: #ccc;
+        }
+
+        .formula-box {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+
+        .formula-box code {
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.75rem;
+            color: #4fc3f7;
+        }
+
+        .decay-chart {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+        }
+
+        .decay-chart h3 {
+            color: #ffc107;
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .bars-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            height: 120px;
+            padding: 10px;
+        }
+
+        .bar-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .bar {
+            width: 50px;
+            border-radius: 4px 4px 0 0;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            transition: height 0.3s;
+        }
+
+        .bar span {
+            font-size: 0.65rem;
+            color: #fff;
+            padding: 3px;
+            font-family: 'Monaco', 'Consolas', monospace;
+        }
+
+        .bar.intended {
+            background: linear-gradient(to top, #4caf5050, #4caf50);
+        }
+
+        .bar.large-grad {
+            background: linear-gradient(to top, #ff6b6b50, #ff6b6b);
+        }
+
+        .bar.small-grad {
+            background: linear-gradient(to top, #4fc3f750, #4fc3f7);
+        }
+
+        .bar-label {
+            font-size: 0.65rem;
+            color: #888;
+            text-align: center;
+        }
+
+        .controls {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+        }
+
+        .controls h3 {
+            color: #aaa;
+            font-size: 0.8rem;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .control-row {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .control-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .control-item label {
+            font-size: 0.75rem;
+            color: #888;
+        }
+
+        .control-item .value {
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.8rem;
+            color: #4fc3f7;
+            min-width: 50px;
+            text-align: right;
+        }
+
+        input[type="range"] {
+            width: 100px;
+            height: 4px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            margin: 0 10px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #4fc3f7;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #4fc3f7, #2196f3);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(79, 195, 247, 0.3);
+        }
+
+        .insight-box {
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 152, 0, 0.1));
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .insight-box h4 {
+            color: #ffc107;
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+        }
+
+        .insight-box p {
+            font-size: 0.75rem;
+            color: #ccc;
+            line-height: 1.4;
+        }
+
+        .highlight {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+
+        .highlight-blue {
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>The Problem with Adam + L2 Regularization</h2>
+        <p class="subtitle">Same weight, same λ — but vastly different effective decay rates</p>
+    </div>
+
+    <div class="main-container">
+        <div class="visualization-area">
+            <div class="weights-display">
+                <div class="weight-box large-grad">
+                    <h4>Weight w₁ (Large Gradient History)</h4>
+                    <div class="value" id="w1-display">2.00</div>
+                    <div class="sub">√v₁ = <span id="v1-text">5.0</span> (steep region)</div>
+                </div>
+                <div class="weight-box small-grad">
+                    <h4>Weight w₂ (Small Gradient History)</h4>
+                    <div class="value" id="w2-display">2.00</div>
+                    <div class="sub">√v₂ = <span id="v2-text">0.5</span> (flat region)</div>
+                </div>
+            </div>
+
+            <div class="canvas-row">
+                <div class="canvas-container">
+                    <div class="canvas-label large-grad">Parameter w₁ (Large Gradients)</div>
+                    <canvas id="canvas1"></canvas>
+                    <div class="decay-indicator suppressed">
+                        <div class="label">Effective Decay Rate</div>
+                        <div class="rate" id="decay1">0.004</div>
+                    </div>
+                </div>
+                <div class="canvas-container">
+                    <div class="canvas-label small-grad">Parameter w₂ (Small Gradients)</div>
+                    <canvas id="canvas2"></canvas>
+                    <div class="decay-indicator amplified">
+                        <div class="label">Effective Decay Rate</div>
+                        <div class="rate" id="decay2">0.040</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div class="problem-section">
+                <h3>⚠️ The Core Problem</h3>
+                <p>
+                    With L2, the regularization term <code>λw</code> becomes part of the gradient,
+                    so Adam's adaptive scaling divides it by <code>√v</code>:
+                </p>
+                <div class="formula-box">
+                    <code>
+                        Effective decay = λw / (√v + ε)<br><br>
+                        w₁: 0.01 × 2 / 5.0 = <span style="color:#ff6b6b">0.004</span><br>
+                        w₂: 0.01 × 2 / 0.5 = <span style="color:#4fc3f7">0.040</span>
+                    </code>
+                </div>
+                <p style="margin-top: 10px;">
+                    <span class="highlight">10× difference</span> in decay for identical weights!
+                </p>
+            </div>
+
+            <div class="decay-chart">
+                <h3>Decay Rate Comparison</h3>
+                <div class="bars-container">
+                    <div class="bar-group">
+                        <div class="bar intended" id="bar-intended" style="height: 60px;">
+                            <span id="bar-intended-val">0.020</span>
+                        </div>
+                        <div class="bar-label">Intended<br>λw</div>
+                    </div>
+                    <div class="bar-group">
+                        <div class="bar large-grad" id="bar-large" style="height: 24px;">
+                            <span id="bar-large-val">0.004</span>
+                        </div>
+                        <div class="bar-label">w₁ actual<br>(suppressed)</div>
+                    </div>
+                    <div class="bar-group">
+                        <div class="bar small-grad" id="bar-small" style="height: 96px;">
+                            <span id="bar-small-val">0.040</span>
+                        </div>
+                        <div class="bar-label">w₂ actual<br>(amplified)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <h3>Adjust Parameters</h3>
+                <div class="control-row">
+                    <div class="control-item">
+                        <label>Weight Decay (λ)</label>
+                        <input type="range" id="lambda-slider" min="0.001" max="0.05" step="0.001" value="0.01">
+                        <span class="value" id="lambda-val">0.010</span>
+                    </div>
+                    <div class="control-item">
+                        <label>Weight Value</label>
+                        <input type="range" id="weight-slider" min="1" max="4" step="0.1" value="2">
+                        <span class="value" id="weight-val">2.00</span>
+                    </div>
+                    <div class="control-item">
+                        <label>√v₁ (large grad)</label>
+                        <input type="range" id="v1-slider" min="2" max="10" step="0.5" value="5">
+                        <span class="value" id="v1-val">5.0</span>
+                    </div>
+                    <div class="control-item">
+                        <label>√v₂ (small grad)</label>
+                        <input type="range" id="v2-slider" min="0.1" max="2" step="0.1" value="0.5">
+                        <span class="value" id="v2-val">0.5</span>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn" id="animate-btn">▶ Animate Weight Decay</button>
+
+            <div class="insight-box">
+                <h4>💡 Key Insight</h4>
+                <p>
+                    Large weights should decay consistently regardless of their gradient history.
+                    But with Adam+L2, weights in <span class="highlight">steep regions get under-regularized</span>
+                    while weights in <span class="highlight-blue">flat regions get over-regularized</span>.
+                    AdamW fixes this by applying decay <em>outside</em> the adaptive mechanism.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Initialize Three.js scenes
+        const scenes = [];
+        const cameras = [];
+        const renderers = [];
+        const balls = [];
+        const trails = [];
+
+        let animating = false;
+        let animationId = null;
+
+        function initScene(canvasId, index) {
+            const canvas = document.getElementById(canvasId);
+            const rect = canvas.parentElement.getBoundingClientRect();
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(50, rect.width / rect.height, 0.1, 1000);
+
+            const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+            renderer.setSize(rect.width, rect.height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // Create surface
+            const geometry = new THREE.PlaneGeometry(8, 8, 80, 80);
+            const positions = geometry.attributes.position;
+
+            // Different curvatures for the two params
+            const curvature = index === 0 ? 0.3 : 0.05; // Steep vs flat
+
+            for (let i = 0; i < positions.count; i++) {
+                const x = positions.getX(i);
+                const y = positions.getY(i);
+                const z = curvature * (x * x + y * y);
+                positions.setZ(i, z);
+            }
+            positions.needsUpdate = true;
+            geometry.computeVertexNormals();
+
+            const surfaceColor = index === 0 ? 0xff6b6b : 0x4fc3f7;
+            const material = new THREE.MeshPhongMaterial({
+                color: surfaceColor,
+                transparent: true,
+                opacity: 0.7,
+                side: THREE.DoubleSide,
+                flatShading: false
+            });
+
+            const surface = new THREE.Mesh(geometry, material);
+            surface.rotation.x = -Math.PI / 2;
+            scene.add(surface);
+
+            // Wireframe
+            const wireGeometry = new THREE.PlaneGeometry(8, 8, 20, 20);
+            const wirePositions = wireGeometry.attributes.position;
+
+            for (let i = 0; i < wirePositions.count; i++) {
+                const x = wirePositions.getX(i);
+                const y = wirePositions.getY(i);
+                const z = curvature * (x * x + y * y);
+                wirePositions.setZ(i, z);
+            }
+            wirePositions.needsUpdate = true;
+
+            const wireMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.15
+            });
+
+            const wireMesh = new THREE.Mesh(wireGeometry, wireMaterial);
+            wireMesh.rotation.x = -Math.PI / 2;
+            wireMesh.position.y = 0.01;
+            scene.add(wireMesh);
+
+            // Ball
+            const ballGeometry = new THREE.SphereGeometry(0.2, 32, 32);
+            const ballMaterial = new THREE.MeshPhongMaterial({
+                color: 0xffffff,
+                emissive: surfaceColor,
+                emissiveIntensity: 0.3
+            });
+            const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+            ball.position.set(2, curvature * 4 + 0.2, 2);
+            scene.add(ball);
+            balls.push(ball);
+
+            // Trail
+            const trailGeometry = new THREE.BufferGeometry();
+            const trailPositions = new Float32Array(300 * 3);
+            trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+            const trailMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+            const trail = new THREE.Line(trailGeometry, trailMaterial);
+            scene.add(trail);
+            trails.push({ line: trail, positions: [], curvature });
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 10, 5);
+            scene.add(directionalLight);
+
+            const pointLight = new THREE.PointLight(surfaceColor, 0.5);
+            pointLight.position.set(0, 5, 0);
+            scene.add(pointLight);
+
+            camera.position.set(8, 6, 8);
+            camera.lookAt(0, 0, 0);
+
+            scenes.push(scene);
+            cameras.push(camera);
+            renderers.push(renderer);
+
+            // Store curvature for animation
+            scene.userData.curvature = curvature;
+
+            return { scene, camera, renderer };
+        }
+
+        initScene('canvas1', 0);
+        initScene('canvas2', 1);
+
+        // Animation variables
+        let positions1 = { x: 2, z: 2 };
+        let positions2 = { x: 2, z: 2 };
+
+        function render() {
+            renderers.forEach((renderer, i) => {
+                renderer.render(scenes[i], cameras[i]);
+            });
+            requestAnimationFrame(render);
+        }
+        render();
+
+        // Update function
+        function updateDisplay() {
+            const lambda = parseFloat(document.getElementById('lambda-slider').value);
+            const weight = parseFloat(document.getElementById('weight-slider').value);
+            const v1 = parseFloat(document.getElementById('v1-slider').value);
+            const v2 = parseFloat(document.getElementById('v2-slider').value);
+
+            // Update value displays
+            document.getElementById('lambda-val').textContent = lambda.toFixed(3);
+            document.getElementById('weight-val').textContent = weight.toFixed(2);
+            document.getElementById('v1-val').textContent = v1.toFixed(1);
+            document.getElementById('v2-val').textContent = v2.toFixed(1);
+
+            // Update weight displays
+            document.getElementById('w1-display').textContent = weight.toFixed(2);
+            document.getElementById('w2-display').textContent = weight.toFixed(2);
+            document.getElementById('v1-text').textContent = v1.toFixed(1);
+            document.getElementById('v2-text').textContent = v2.toFixed(1);
+
+            // Calculate decay rates
+            const intended = lambda * weight;
+            const decay1 = lambda * weight / v1;
+            const decay2 = lambda * weight / v2;
+
+            document.getElementById('decay1').textContent = decay1.toFixed(4);
+            document.getElementById('decay2').textContent = decay2.toFixed(4);
+
+            // Update formula box
+            const formulaBox = document.querySelector('.formula-box code');
+            formulaBox.innerHTML = `
+                Effective decay = λw / (√v + ε)<br><br>
+                w₁: ${lambda.toFixed(3)} × ${weight.toFixed(1)} / ${v1.toFixed(1)} = <span style="color:#ff6b6b">${decay1.toFixed(4)}</span><br>
+                w₂: ${lambda.toFixed(3)} × ${weight.toFixed(1)} / ${v2.toFixed(1)} = <span style="color:#4fc3f7">${decay2.toFixed(4)}</span>
+            `;
+
+            // Update ratio display
+            const ratio = (decay2 / decay1).toFixed(1);
+            document.querySelector('.problem-section p:last-child').innerHTML =
+                `<span class="highlight">${ratio}× difference</span> in decay for identical weights!`;
+
+            // Update bar chart
+            const maxHeight = 100;
+            const maxVal = Math.max(intended, decay1, decay2);
+            const scale = maxHeight / maxVal;
+
+            document.getElementById('bar-intended').style.height = `${intended * scale}px`;
+            document.getElementById('bar-large').style.height = `${decay1 * scale}px`;
+            document.getElementById('bar-small').style.height = `${decay2 * scale}px`;
+
+            document.getElementById('bar-intended-val').textContent = intended.toFixed(3);
+            document.getElementById('bar-large-val').textContent = decay1.toFixed(4);
+            document.getElementById('bar-small-val').textContent = decay2.toFixed(4);
+        }
+
+        // Event listeners
+        document.getElementById('lambda-slider').addEventListener('input', updateDisplay);
+        document.getElementById('weight-slider').addEventListener('input', updateDisplay);
+        document.getElementById('v1-slider').addEventListener('input', updateDisplay);
+        document.getElementById('v2-slider').addEventListener('input', updateDisplay);
+
+        // Animation
+        document.getElementById('animate-btn').addEventListener('click', function() {
+            if (animating) {
+                animating = false;
+                this.textContent = '▶ Animate Weight Decay';
+                return;
+            }
+
+            animating = true;
+            this.textContent = '⏹ Stop Animation';
+
+            // Reset positions
+            positions1 = { x: 2, z: 2 };
+            positions2 = { x: 2, z: 2 };
+            trails[0].positions = [];
+            trails[1].positions = [];
+
+            const v1 = parseFloat(document.getElementById('v1-slider').value);
+            const v2 = parseFloat(document.getElementById('v2-slider').value);
+            const lambda = parseFloat(document.getElementById('lambda-slider').value);
+
+            function animateFrame() {
+                if (!animating) return;
+
+                // Simulate weight decay effect on position (visual representation)
+                // w₁ decays slowly (low effective rate)
+                const decayRate1 = lambda / v1 * 0.5;
+                const decayRate2 = lambda / v2 * 0.5;
+
+                positions1.x *= (1 - decayRate1);
+                positions1.z *= (1 - decayRate1);
+
+                positions2.x *= (1 - decayRate2);
+                positions2.z *= (1 - decayRate2);
+
+                // Clamp to prevent going too small
+                positions1.x = Math.max(positions1.x, 0.05);
+                positions1.z = Math.max(positions1.z, 0.05);
+                positions2.x = Math.max(positions2.x, 0.05);
+                positions2.z = Math.max(positions2.z, 0.05);
+
+                // Update ball positions
+                const y1 = scenes[0].userData.curvature * (positions1.x * positions1.x + positions1.z * positions1.z) + 0.2;
+                const y2 = scenes[1].userData.curvature * (positions2.x * positions2.x + positions2.z * positions2.z) + 0.2;
+
+                balls[0].position.set(positions1.x, y1, positions1.z);
+                balls[1].position.set(positions2.x, y2, positions2.z);
+
+                // Update trails
+                trails[0].positions.push(new THREE.Vector3(positions1.x, y1 - 0.15, positions1.z));
+                trails[1].positions.push(new THREE.Vector3(positions2.x, y2 - 0.15, positions2.z));
+
+                // Limit trail length
+                if (trails[0].positions.length > 100) trails[0].positions.shift();
+                if (trails[1].positions.length > 100) trails[1].positions.shift();
+
+                // Update trail geometries
+                trails.forEach((trail, i) => {
+                    const positions = trail.line.geometry.attributes.position.array;
+                    for (let j = 0; j < trail.positions.length; j++) {
+                        positions[j * 3] = trail.positions[j].x;
+                        positions[j * 3 + 1] = trail.positions[j].y;
+                        positions[j * 3 + 2] = trail.positions[j].z;
+                    }
+                    trail.line.geometry.attributes.position.needsUpdate = true;
+                    trail.line.geometry.setDrawRange(0, trail.positions.length);
+                });
+
+                // Check if animation should stop
+                if (positions2.x < 0.1 && positions2.z < 0.1) {
+                    // w₂ reached near-zero (over-regularized)
+                    setTimeout(() => {
+                        animating = false;
+                        document.getElementById('animate-btn').textContent = '▶ Animate Weight Decay';
+                    }, 500);
+                }
+
+                animationId = requestAnimationFrame(animateFrame);
+            }
+
+            animateFrame();
+        });
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            renderers.forEach((renderer, i) => {
+                const canvas = renderer.domElement;
+                const rect = canvas.parentElement.getBoundingClientRect();
+                renderer.setSize(rect.width, rect.height);
+                cameras[i].aspect = rect.width / rect.height;
+                cameras[i].updateProjectionMatrix();
+            });
+        });
+
+        // Initial update
+        updateDisplay();
+    </script>
+</body>
+</html>

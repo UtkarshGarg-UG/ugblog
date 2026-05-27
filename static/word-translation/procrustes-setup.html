@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Procrustes problem</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px; box-sizing: border-box;
+    position: relative;
+  }
+  canvas { display: block; width: 100%; max-width: 600px; height: auto; aspect-ratio: 1 / 1; }
+  .hint {
+    position: absolute; top: 22px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #786c5b; transition: color 0.5s ease;
+  }
+  .hint.searching { color: #d4895c; }
+  .hint.aligned   { color: #95b078; }
+  .formula {
+    position: absolute; bottom: 22px; left: 0; right: 0;
+    text-align: center;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 13px;
+    color: #a0967f;
+  }
+  .formula .arg { color: #82a8c3; }
+  .formula .val { color: #e8dcc1; }
+  .replay {
+    position: absolute; top: 14px; right: 14px;
+    background: none; border: 1px solid #3a352d; color: #8a7e6d;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; padding: 0; cursor: pointer; z-index: 10;
+    transition: all 0.2s ease;
+  }
+  .replay:hover { border-color: #82a8c3; color: #82a8c3; }
+
+  /* Side matrix readouts (X on the left, Y on the right). */
+  .mat {
+    position: absolute;
+    top: 70px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #8a7e6d;
+    pointer-events: none;
+  }
+  .mat.left  { left: 18px;  text-align: left;  }
+  .mat.right { right: 18px; text-align: right; }
+  .mat .lbl {
+    font-weight: 700;
+    margin-bottom: 4px;
+    letter-spacing: 0.02em;
+  }
+  .mat.left  .lbl { color: #d4895c; }
+  .mat.right .lbl { color: #95b078; }
+  .mat .cells {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 1px 12px;
+  }
+  .mat .cells span {
+    font-variant-numeric: tabular-nums;
+    white-space: pre;
+  }
+  .mat .row.active span { color: #e8dcc1; font-weight: 600; }
+  .mat .ell { color: #5e5648; }
+  .mat .note { font-size: 9px; color: #5e5648; margin-top: 4px; letter-spacing: 0.03em; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="hint searching" id="hint">searching for the rotation</div>
+  <button class="replay" id="replay" title="replay">↻</button>
+  <div class="mat left">
+    <div class="lbl">X</div>
+    <div class="cells" id="cellsX"></div>
+    <div class="note">source · 14 × 2</div>
+  </div>
+  <div class="mat right">
+    <div class="lbl">Y</div>
+    <div class="cells" id="cellsY"></div>
+    <div class="note">target · 14 × 2</div>
+  </div>
+  <canvas id="cv"></canvas>
+  <div class="formula" id="formula">
+    minimize <span class="arg">‖W X − Y‖²</span>  =  <span class="val" id="residVal">—</span>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const hint = document.getElementById('hint');
+const residEl = document.getElementById('residVal');
+const replay = document.getElementById('replay');
+const cellsX = document.getElementById('cellsX');
+const cellsY = document.getElementById('cellsY');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+const PAL = {
+  blue:'#82a8c3', caramel:'#d4895c', sage:'#95b078',
+  muted:'#8a7e6d', faint:'#5e5648', cream:'#e8dcc1',
+};
+
+// 14 paired points (X and Y), Y = R*X for an unknown rotation, with a small noise on Y.
+const TRUE_THETA = -45 * Math.PI / 180;
+let rng = 7;
+function srand() { rng = (rng * 9301 + 49297) % 233280; return rng / 233280; }
+function randn() { let u = 1 - srand(), v = srand(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+function rot(t) { return [[Math.cos(t), -Math.sin(t)], [Math.sin(t), Math.cos(t)]]; }
+function apply(M, p) { return [M[0][0]*p[0] + M[0][1]*p[1], M[1][0]*p[0] + M[1][1]*p[1]]; }
+
+const N = 14;
+const X = [];
+for (let i = 0; i < N; i++) {
+  const c = srand();
+  if (c < 0.4) X.push([randn()*0.55 + 0.95, randn()*0.30 + 0.35]);
+  else if (c < 0.75) X.push([randn()*0.4 - 0.7, randn()*0.5 + 0.10]);
+  else X.push([randn()*0.30, randn()*0.40 - 0.85]);
+}
+const Y = X.map(p => {
+  const r = apply(rot(TRUE_THETA), p);
+  return [r[0] + randn()*0.03, r[1] + randn()*0.03];
+});
+
+// Render matrices once (first 5 rows visible, then a vertical ellipsis row).
+function fmt(v) { return (v >= 0 ? ' ' : '') + v.toFixed(2); }
+const ROWS_SHOWN = 5;
+function renderMatrix(el, M) {
+  let html = '';
+  for (let i = 0; i < ROWS_SHOWN; i++) {
+    html += `<div class="row" data-row="${i}" style="display:contents;">`
+         + `<span>${fmt(M[i][0])}</span><span>${fmt(M[i][1])}</span>`
+         + `</div>`;
+  }
+  html += `<span class="ell">  ⋮  </span><span class="ell">  ⋮  </span>`;
+  el.innerHTML = html;
+}
+renderMatrix(cellsX, X);
+renderMatrix(cellsY, Y);
+function setActiveRow(idx) {
+  // Highlight the matching row in both matrices, if it is among the rows we're showing.
+  for (const el of [cellsX, cellsY]) {
+    el.querySelectorAll('.row').forEach((r, i) => r.classList.toggle('active', i === idx));
+  }
+}
+
+// Animation: rotation sweeps from -150° to TRUE_THETA over T_SEARCH seconds,
+// holds at minimum for T_HOLD, then loops.
+const INIT = 120 * Math.PI / 180;
+const T_SEARCH = 5.0;
+const T_HOLD = 2.8;
+const T_LOOP = T_SEARCH + T_HOLD + 0.6;
+
+let t0 = performance.now();
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2; }
+
+function currentTheta(t) {
+  if (t < T_SEARCH) {
+    return INIT + (TRUE_THETA - INIT) * easeInOut(t / T_SEARCH);
+  }
+  return TRUE_THETA;
+}
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w/2, cy = h/2, scale = Math.min(w, h) * 0.26;
+
+  const tNow = (performance.now() - t0) / 1000;
+  const t = tNow % T_LOOP;
+  const theta = currentTheta(t);
+
+  // Cycle through the first ROWS_SHOWN matrix rows, ~1.6s each
+  const activeRow = Math.floor((tNow / 1.6) % ROWS_SHOWN);
+  setActiveRow(activeRow);
+
+  const WX = X.map(p => apply(rot(theta), p));
+
+  // residual sum-of-squares
+  let r2 = 0;
+  for (let i = 0; i < N; i++) {
+    const dx = WX[i][0] - Y[i][0], dy = WX[i][1] - Y[i][1];
+    r2 += dx*dx + dy*dy;
+  }
+  const resid = Math.sqrt(r2 / N);
+  const aligned = resid < 0.10;
+
+  // residual lines (paired)
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = aligned ? 'rgba(149, 176, 120, 0.35)' : 'rgba(212, 137, 92, 0.40)';
+  for (let i = 0; i < N; i++) {
+    const a = WX[i], b = Y[i];
+    ctx.beginPath();
+    ctx.moveTo(cx + a[0]*scale, cy - a[1]*scale);
+    ctx.lineTo(cx + b[0]*scale, cy - b[1]*scale);
+    ctx.stroke();
+  }
+
+  // target Y (green) — active row gets a larger ring
+  for (let i = 0; i < Y.length; i++) {
+    const p = Y[i];
+    const isActive = i === activeRow;
+    ctx.fillStyle = aligned ? 'rgba(149, 176, 120, 0.95)' : 'rgba(149, 176, 120, 0.55)';
+    ctx.beginPath();
+    ctx.arc(cx + p[0]*scale, cy - p[1]*scale, isActive ? 6 : 4, 0, Math.PI*2);
+    ctx.fill();
+    if (isActive) {
+      ctx.strokeStyle = '#e8dcc1'; ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx + p[0]*scale, cy - p[1]*scale, 10, 0, Math.PI*2);
+      ctx.stroke();
+    }
+  }
+  // WX (warm) — active row gets a larger ring
+  for (let i = 0; i < WX.length; i++) {
+    const p = WX[i];
+    const isActive = i === activeRow;
+    ctx.fillStyle = aligned ? 'rgba(216, 188, 132, 0.95)' : 'rgba(212, 137, 92, 0.92)';
+    ctx.beginPath();
+    ctx.arc(cx + p[0]*scale, cy - p[1]*scale, isActive ? 6 : 4, 0, Math.PI*2);
+    ctx.fill();
+    if (isActive) {
+      ctx.strokeStyle = '#e8dcc1'; ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx + p[0]*scale, cy - p[1]*scale, 10, 0, Math.PI*2);
+      ctx.stroke();
+    }
+  }
+
+  // labels: X and Y
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = PAL.caramel;
+  ctx.fillText('WX', 18, h - 60);
+  ctx.fillStyle = PAL.sage;
+  ctx.fillText('Y', 18, h - 44);
+
+  // glow when aligned
+  if (aligned) {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w,h)*0.42);
+    g.addColorStop(0, 'rgba(149, 176, 120, 0.10)');
+    g.addColorStop(1, 'rgba(149, 176, 120, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // update hint + readout
+  hint.textContent = aligned ? 'optimum reached · W minimizes the residual' : 'searching for the rotation';
+  hint.className = 'hint ' + (aligned ? 'aligned' : 'searching');
+  residEl.textContent = resid.toFixed(3);
+  residEl.style.color = aligned ? PAL.sage : PAL.cream;
+}
+
+function loop() { draw(); requestAnimationFrame(loop); }
+
+replay.addEventListener('click', () => { t0 = performance.now(); });
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') t0 = performance.now();
+});
+
+fit();
+window.addEventListener('resize', fit);
+loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Geometric Alignment</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+    touch-action: none;
+  }
+  .stage {
+    position: relative; width: 100%; height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 18px;
+    box-sizing: border-box;
+  }
+  canvas {
+    display: block; width: 100%; max-width: 720px; height: auto;
+    aspect-ratio: 4 / 3;
+    cursor: grab;
+    touch-action: none;
+  }
+  canvas.grabbing { cursor: grabbing; }
+  .hint {
+    position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #786c5b; transition: color 0.5s ease;
+    pointer-events: none;
+    user-select: none;
+  }
+  .aligned .hint { color: #95b078; }
+  .aligned-msg {
+    position: absolute;
+    left: 24px; right: 24px;
+    bottom: 78px;
+    text-align: center;
+    font-weight: 700;
+    font-size: clamp(17px, 2.4vw, 24px);
+    line-height: 1.25;
+    color: #95b078;
+    letter-spacing: 0.005em;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.55s ease, transform 0.55s ease;
+    pointer-events: none;
+  }
+  .aligned .aligned-msg {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .gauge {
+    position: absolute; bottom: 22px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 14px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 11px; color: #8a7e6d;
+    pointer-events: none;
+  }
+  .gauge .item .lbl { color: #786c5b; }
+  .gauge .item .val { color: #e8dcc1; }
+  .aligned .gauge .err .val { color: #95b078; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="hint" id="hint">drag to rotate</div>
+  <canvas id="cv"></canvas>
+  <div class="aligned-msg" id="alignedMsg">the Paper finds this rotation automatically, without any paired data!</div>
+  <div class="gauge">
+    <span class="item"><span class="lbl">angle </span><span class="val" id="angleVal">+0°</span></span>
+    <span class="item err"><span class="lbl">residual </span><span class="val" id="errVal">0.00</span></span>
+    <span class="item"><span class="lbl">matched </span><span class="val" id="matchedVal">0 / 10</span></span>
+  </div>
+</div>
+<script>
+const TRUE_THETA = -50 * Math.PI / 180;
+let currentTheta = -135 * Math.PI / 180;
+
+let seedState = 7;
+function srand() { seedState = (seedState * 9301 + 49297) % 233280; return seedState / 233280; }
+function randn() { let u = 1 - srand(), v = srand(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// Labeled key pairs (in source frame coordinates)
+const KEY_PAIRS = [
+  { en: 'king',   it: 're',      x: -1.30, y:  1.05 },
+  { en: 'queen',  it: 'regina',  x: -0.45, y:  1.25 },
+  { en: 'man',    it: 'uomo',    x: -1.25, y:  0.10 },
+  { en: 'woman',  it: 'donna',   x: -0.40, y:  0.30 },
+  { en: 'cat',    it: 'gatto',   x:  0.95, y:  1.10 },
+  { en: 'dog',    it: 'cane',    x:  1.45, y:  0.55 },
+  { en: 'bird',   it: 'uccello', x:  0.55, y:  0.50 },
+  { en: 'three',  it: 'tre',     x: -0.95, y: -0.95 },
+  { en: 'water',  it: 'acqua',   x:  0.15, y: -1.20 },
+  { en: 'red',    it: 'rosso',   x:  1.00, y: -0.80 },
+];
+
+// Background filler dots (so the cloud has texture beyond the labels)
+const FILL = [];
+for (let i = 0; i < 40; i++) {
+  const c = srand();
+  let x, y;
+  if (c < 0.40) { x = randn() * 0.70 + 1.10; y = randn() * 0.35 + 0.50; }
+  else if (c < 0.75) { x = randn() * 0.45 - 0.80; y = randn() * 0.55 + 0.15; }
+  else { x = randn() * 0.35; y = randn() * 0.45 - 0.95; }
+  FILL.push({ x, y });
+}
+
+function rot(t) { return [[Math.cos(t), -Math.sin(t)], [Math.sin(t), Math.cos(t)]]; }
+function apply(M, p) { return [M[0][0]*p[0] + M[0][1]*p[1], M[1][0]*p[0] + M[1][1]*p[1]]; }
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+const hint = document.getElementById('hint');
+const angleVal = document.getElementById('angleVal');
+const errVal = document.getElementById('errVal');
+const matchedVal = document.getElementById('matchedVal');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function normalizeAngle(a) {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const scale = Math.min(w, h) * 0.22;
+
+  // Italian (target) positions: take source-frame points and apply true rotation
+  const Y_fill = FILL.map(p => apply(rot(TRUE_THETA), [p.x, p.y]));
+  const Y_pair = KEY_PAIRS.map(p => apply(rot(TRUE_THETA), [p.x, p.y]));
+
+  // English (source) positions: apply user-controlled rotation
+  const X_fill = FILL.map(p => apply(rot(currentTheta), [p.x, p.y]));
+  const X_pair = KEY_PAIRS.map(p => apply(rot(currentTheta), [p.x, p.y]));
+
+  // Compute per-pair residuals
+  const pairDists = X_pair.map((p, i) => {
+    const dx = p[0] - Y_pair[i][0], dy = p[1] - Y_pair[i][1];
+    return Math.sqrt(dx*dx + dy*dy);
+  });
+  let totalErr = 0;
+  X_fill.forEach((p, i) => {
+    const dx = p[0] - Y_fill[i][0], dy = p[1] - Y_fill[i][1];
+    totalErr += dx*dx + dy*dy;
+  });
+  pairDists.forEach(d => { totalErr += d*d; });
+  const resid = Math.sqrt(totalErr / (FILL.length + KEY_PAIRS.length));
+  const matched = pairDists.filter(d => d < 0.15).length;
+  const aligned = resid < 0.08;
+
+  // Background filler dots: Italian (sage)
+  ctx.fillStyle = aligned ? 'rgba(149, 176, 120, 0.85)' : 'rgba(149, 176, 120, 0.42)';
+  Y_fill.forEach(p => {
+    ctx.beginPath(); ctx.arc(cx + p[0] * scale, cy - p[1] * scale, 3, 0, Math.PI * 2); ctx.fill();
+  });
+  // English (caramel)
+  ctx.fillStyle = aligned ? 'rgba(216, 188, 132, 0.85)' : 'rgba(212, 137, 92, 0.75)';
+  X_fill.forEach(p => {
+    ctx.beginPath(); ctx.arc(cx + p[0] * scale, cy - p[1] * scale, 3, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Key pairs: thin lines connecting pairs when not aligned (residual visualization)
+  if (!aligned) {
+    KEY_PAIRS.forEach((p, i) => {
+      const sx = cx + X_pair[i][0] * scale, sy = cy - X_pair[i][1] * scale;
+      const tx = cx + Y_pair[i][0] * scale, ty = cy - Y_pair[i][1] * scale;
+      const close = pairDists[i] < 0.5;
+      ctx.strokeStyle = close ? 'rgba(149, 176, 120, 0.4)' : 'rgba(138, 126, 109, 0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke();
+    });
+  }
+
+  // Italian labeled points (sage)
+  Y_pair.forEach((p, i) => {
+    const px = cx + p[0] * scale, py = cy - p[1] * scale;
+    ctx.fillStyle = aligned ? '#95b078' : 'rgba(149, 176, 120, 0.85)';
+    ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+    if (!aligned) {
+      ctx.fillStyle = 'rgba(149, 176, 120, 0.85)';
+      ctx.font = '600 11px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(KEY_PAIRS[i].it, px + 8, py + 4);
+    }
+  });
+
+  // English labeled points (caramel)
+  X_pair.forEach((p, i) => {
+    const px = cx + p[0] * scale, py = cy - p[1] * scale;
+    ctx.fillStyle = aligned ? '#d4895c' : 'rgba(212, 137, 92, 0.95)';
+    ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+    if (!aligned) {
+      ctx.fillStyle = '#e8dcc1';
+      ctx.font = '600 11px -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(KEY_PAIRS[i].en, px + 8, py - 6);
+    }
+  });
+
+  // When aligned, render English/Italian labels stacked at the merged point
+  if (aligned) {
+    Y_pair.forEach((p, i) => {
+      const px = cx + p[0] * scale, py = cy - p[1] * scale;
+      ctx.font = '600 11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#e8dcc1';
+      ctx.fillText(KEY_PAIRS[i].en, px, py - 11);
+      ctx.fillStyle = '#95b078';
+      ctx.fillText(KEY_PAIRS[i].it, px, py + 19);
+    });
+  }
+
+  // Aligned glow
+  if (aligned) {
+    stage.classList.add('aligned');
+    hint.textContent = 'aligned';
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, h) * 0.45);
+    g.addColorStop(0, 'rgba(149, 176, 120, 0.10)');
+    g.addColorStop(1, 'rgba(149, 176, 120, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    stage.classList.remove('aligned');
+    hint.textContent = 'drag to rotate the warm cloud onto the green one';
+  }
+
+  // Update gauge
+  const displayedAngle = normalizeAngle(currentTheta);
+  const deg = (displayedAngle * 180 / Math.PI).toFixed(0);
+  angleVal.textContent = (deg >= 0 ? '+' : '') + deg + '°';
+  errVal.textContent = resid.toFixed(2);
+  matchedVal.textContent = matched + ' / ' + KEY_PAIRS.length;
+}
+
+// Rotational drag interaction
+let dragging = false;
+let dragStartAngle = 0;
+let dragStartTheta = 0;
+function pointerAngle(clientX, clientY) {
+  const r = cv.getBoundingClientRect();
+  const x = clientX - r.left - r.width / 2;
+  const y = clientY - r.top - r.height / 2;
+  return Math.atan2(-y, x);
+}
+function startDrag(clientX, clientY) {
+  dragging = true;
+  dragStartAngle = pointerAngle(clientX, clientY);
+  dragStartTheta = currentTheta;
+  cv.classList.add('grabbing');
+}
+function moveDrag(clientX, clientY) {
+  if (!dragging) return;
+  const a = pointerAngle(clientX, clientY);
+  let delta = a - dragStartAngle;
+  while (delta > Math.PI) delta -= 2 * Math.PI;
+  while (delta < -Math.PI) delta += 2 * Math.PI;
+  currentTheta = dragStartTheta + delta;
+  draw();
+}
+function endDrag() {
+  dragging = false;
+  cv.classList.remove('grabbing');
+}
+
+cv.addEventListener('mousedown', e => { e.preventDefault(); startDrag(e.clientX, e.clientY); });
+window.addEventListener('mousemove', e => moveDrag(e.clientX, e.clientY));
+window.addEventListener('mouseup', endDrag);
+
+cv.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  startDrag(t.clientX, t.clientY);
+}, { passive: false });
+window.addEventListener('touchmove', e => {
+  if (!dragging) return;
+  const t = e.touches[0];
+  if (t) moveDrag(t.clientX, t.clientY);
+}, { passive: false });
+window.addEventListener('touchend', endDrag);
+window.addEventListener('touchcancel', endDrag);
+
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') {
+    currentTheta = -135 * Math.PI / 180;
+    draw();
+  }
+});
+
+window.addEventListener('resize', fit);
+fit();
+</script>
+</body>
+</html>

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSD Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 8px;
+            color: #58a6ff;
+            font-size: 1.3rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        .main-content {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px;
+            flex: 1;
+            min-width: 280px;
+            max-width: 400px;
+        }
+
+        .panel h3 {
+            color: #58a6ff;
+            font-size: 0.95rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .panel.psd h3 {
+            color: #3fb950;
+        }
+
+        .panel.non-psd h3 {
+            color: #f85149;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .matrix-display {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            text-align: center;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+        }
+
+        .eigenvalues {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: #8b949e;
+        }
+
+        .eigenvalues span.pos {
+            color: #3fb950;
+        }
+
+        .eigenvalues span.neg {
+            color: #f85149;
+        }
+
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 0.85rem;
+        }
+
+        .result.positive {
+            background: rgba(63, 185, 80, 0.1);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+            color: #3fb950;
+        }
+
+        .result.negative {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+            color: #f85149;
+        }
+
+        .explanation {
+            background: rgba(56, 139, 253, 0.1);
+            border: 1px solid rgba(56, 139, 253, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        .controls {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            color: #8b949e;
+            font-size: 0.85rem;
+            min-width: 80px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            min-width: 50px;
+            text-align: right;
+            font-size: 0.85rem;
+        }
+
+        .point-display {
+            text-align: center;
+            margin-top: 10px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+            color: #f0883e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Quadratic Forms: Bowl vs Saddle</h2>
+        <p class="subtitle">PSD matrices create bowls (always ≥ 0). Non-PSD matrices create saddles (can go negative).</p>
+
+        <div class="main-content">
+            <div class="panel psd">
+                <h3>PSD Matrix (All λ ≥ 0)</h3>
+                <canvas id="psd-canvas" width="250" height="200"></canvas>
+                <div class="matrix-display">
+                    A = [2, 1; 1, 2]
+                    <div class="eigenvalues">
+                        Eigenvalues: <span class="pos">λ₁ = 3</span>, <span class="pos">λ₂ = 1</span>
+                    </div>
+                </div>
+                <div class="result positive" id="psd-result">
+                    xᵀAx = 18 ≥ 0 ✓
+                </div>
+            </div>
+
+            <div class="panel non-psd">
+                <h3>Non-PSD Matrix (Some λ < 0)</h3>
+                <canvas id="nonpsd-canvas" width="250" height="200"></canvas>
+                <div class="matrix-display">
+                    B = [1, 0; 0, -1]
+                    <div class="eigenvalues">
+                        Eigenvalues: <span class="pos">λ₁ = 1</span>, <span class="neg">λ₂ = -1</span>
+                    </div>
+                </div>
+                <div class="result negative" id="nonpsd-result">
+                    xᵀBx = -1 < 0 ✗
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <label>x₁:</label>
+                <input type="range" id="x1" min="-2" max="2" step="0.1" value="1">
+                <span class="value" id="x1-val">1.0</span>
+            </div>
+            <div class="control-row">
+                <label>x₂:</label>
+                <input type="range" id="x2" min="-2" max="2" step="0.1" value="1">
+                <span class="value" id="x2-val">1.0</span>
+            </div>
+            <div class="point-display">
+                Testing point: x = (<span id="pt-x1">1.0</span>, <span id="pt-x2">1.0</span>)
+            </div>
+        </div>
+
+        <div class="explanation">
+            <strong>What you're seeing:</strong> The height of the surface at point (x₁, x₂) shows the value of xᵀAx.
+            <br><br>
+            • <strong style="color: #3fb950">PSD (left)</strong>: The surface is a bowl — it never goes below zero. All eigenvalues are positive, so the quadratic form is always ≥ 0.
+            <br><br>
+            • <strong style="color: #f85149">Non-PSD (right)</strong>: The surface is a saddle — it goes negative in one direction (along the eigenvector with negative eigenvalue). Move x₂ and watch it dip below zero!
+        </div>
+    </div>
+
+    <script>
+        const psdCanvas = document.getElementById('psd-canvas');
+        const nonpsdCanvas = document.getElementById('nonpsd-canvas');
+        const psdCtx = psdCanvas.getContext('2d');
+        const nonpsdCtx = nonpsdCanvas.getContext('2d');
+
+        // PSD matrix: A = [[2, 1], [1, 2]]
+        // Eigenvalues: 3, 1 (both positive)
+        function psdQuadForm(x1, x2) {
+            return 2*x1*x1 + 2*x1*x2 + 2*x2*x2;
+        }
+
+        // Non-PSD matrix: B = [[1, 0], [0, -1]]
+        // Eigenvalues: 1, -1 (one negative)
+        function nonpsdQuadForm(x1, x2) {
+            return x1*x1 - x2*x2;
+        }
+
+        let testX1 = 1, testX2 = 1;
+
+        function drawSurface(ctx, canvas, quadFunc, isPsd) {
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            const margin = 30;
+            const plotW = w - 2 * margin;
+            const plotH = h - 2 * margin;
+
+            // Draw the surface as a heatmap/contour
+            const range = 2;
+            const steps = 40;
+
+            for (let i = 0; i < steps; i++) {
+                for (let j = 0; j < steps; j++) {
+                    const x1 = -range + (i / steps) * 2 * range;
+                    const x2 = -range + (j / steps) * 2 * range;
+                    const val = quadFunc(x1, x2);
+
+                    // Map value to color
+                    let color;
+                    if (val >= 0) {
+                        const intensity = Math.min(val / 8, 1);
+                        color = `rgba(63, 185, 80, ${0.1 + intensity * 0.6})`;
+                    } else {
+                        const intensity = Math.min(-val / 4, 1);
+                        color = `rgba(248, 81, 73, ${0.1 + intensity * 0.6})`;
+                    }
+
+                    const px = margin + (i / steps) * plotW;
+                    const py = margin + (1 - j / steps) * plotH;
+                    const size = plotW / steps + 1;
+
+                    ctx.fillStyle = color;
+                    ctx.fillRect(px, py, size, size);
+                }
+            }
+
+            // Draw zero contour
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            if (!isPsd) {
+                // For x1^2 - x2^2 = 0, the zero contour is x1 = ±x2
+                const x1Start = -range, x2Start = -range;
+                const x1End = range, x2End = range;
+
+                // Line x1 = x2
+                ctx.moveTo(margin, margin);
+                ctx.lineTo(margin + plotW, margin + plotH);
+                ctx.stroke();
+
+                // Line x1 = -x2
+                ctx.beginPath();
+                ctx.moveTo(margin, margin + plotH);
+                ctx.lineTo(margin + plotW, margin);
+                ctx.stroke();
+            }
+
+            // Draw test point
+            const ptX = margin + ((testX1 + range) / (2 * range)) * plotW;
+            const ptY = margin + ((range - testX2) / (2 * range)) * plotH;
+
+            ctx.fillStyle = '#f0883e';
+            ctx.beginPath();
+            ctx.arc(ptX, ptY, 6, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Axes labels
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '11px sans-serif';
+            ctx.fillText('x₁', w - margin + 5, h / 2 + 4);
+            ctx.fillText('x₂', w / 2 - 5, margin - 8);
+            ctx.fillText('-2', margin - 5, h - margin + 15);
+            ctx.fillText('2', w - margin - 5, h - margin + 15);
+        }
+
+        function updateResults() {
+            const psdVal = psdQuadForm(testX1, testX2);
+            const nonpsdVal = nonpsdQuadForm(testX1, testX2);
+
+            document.getElementById('psd-result').textContent =
+                `xᵀAx = ${psdVal.toFixed(1)} ≥ 0 ✓`;
+            document.getElementById('psd-result').className = 'result positive';
+
+            const nonpsdResult = document.getElementById('nonpsd-result');
+            if (nonpsdVal >= 0) {
+                nonpsdResult.textContent = `xᵀBx = ${nonpsdVal.toFixed(1)} ≥ 0`;
+                nonpsdResult.className = 'result positive';
+            } else {
+                nonpsdResult.textContent = `xᵀBx = ${nonpsdVal.toFixed(1)} < 0 ✗`;
+                nonpsdResult.className = 'result negative';
+            }
+
+            document.getElementById('pt-x1').textContent = testX1.toFixed(1);
+            document.getElementById('pt-x2').textContent = testX2.toFixed(1);
+        }
+
+        function draw() {
+            drawSurface(psdCtx, psdCanvas, psdQuadForm, true);
+            drawSurface(nonpsdCtx, nonpsdCanvas, nonpsdQuadForm, false);
+            updateResults();
+        }
+
+        document.getElementById('x1').addEventListener('input', e => {
+            testX1 = parseFloat(e.target.value);
+            document.getElementById('x1-val').textContent = testX1.toFixed(1);
+            draw();
+        });
+
+        document.getElementById('x2').addEventListener('input', e => {
+            testX2 = parseFloat(e.target.value);
+            document.getElementById('x2-val').textContent = testX2.toFixed(1);
+            draw();
+        });
+
+        draw();
+    </script>
+</body>
+</html>

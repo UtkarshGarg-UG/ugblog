@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hubness vs CSLS</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px; box-sizing: border-box;
+  }
+  canvas { display: block; width: 100%; max-width: 620px; height: auto; aspect-ratio: 1 / 1; }
+  .top {
+    position: absolute; top: 22px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase;
+    transition: color 0.5s ease;
+  }
+  .top.nn   { color: #c25c4a; }
+  .top.csls { color: #95b078; }
+  .replay {
+    position: absolute; top: 14px; right: 14px;
+    background: none; border: 1px solid #3a352d; color: #8a7e6d;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; padding: 0; cursor: pointer; z-index: 10;
+    transition: all 0.2s ease;
+  }
+  .replay:hover { border-color: #82a8c3; color: #82a8c3; }
+  .nav {
+    position: absolute; bottom: 86px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 10px; z-index: 5;
+  }
+  .nav button {
+    background: none; border: 1px solid #3a352d;
+    color: #8a7e6d; padding: 5px 14px;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    font-family: -apple-system, sans-serif;
+    border-radius: 14px; cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .nav button.active.nn   { border-color: #c25c4a; color: #c25c4a; }
+  .nav button.active.csls { border-color: #95b078; color: #95b078; }
+  .nav button:hover { border-color: #82a8c3; color: #82a8c3; }
+  .legend {
+    position: absolute; bottom: 22px; left: 0; right: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    pointer-events: none;
+    color: #8a7e6d; font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+  }
+  .legend .row { display: flex; align-items: baseline; gap: 18px; }
+  .legend .acc .big {
+    font-size: 22px; font-weight: 700; transition: color 0.5s ease;
+  }
+  .legend .acc.nn   .big { color: #c25c4a; }
+  .legend .acc.csls .big { color: #95b078; }
+  .legend .formula { font-size: 11px; color: #a0967f; letter-spacing: 0.02em; margin-top: 4px; }
+  .legend .formula .var-cos { color: #82a8c3; }
+  .legend .formula .var-rt  { color: #c8a838; }
+  .legend .formula .var-rs  { color: #d4895c; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="top nn" id="top">nearest neighbor retrieval · cosine similarities</div>
+  <button class="replay" id="replay" title="replay">↻</button>
+  <canvas id="cv"></canvas>
+  <div class="nav">
+    <button id="btnNN" class="active nn">Nearest Neighbor</button>
+    <button id="btnCSLS">CSLS</button>
+  </div>
+  <div class="legend">
+    <div class="row">
+      <div class="acc nn" id="acc">
+        <span class="big" id="accVal">— / 6</span>
+        <span>correct matches (max in row)</span>
+      </div>
+    </div>
+    <div class="formula" id="formula">
+      <span class="var-cos">cos(Wx, y)</span> picks the column max in each row · hub column always wins.
+    </div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const topEl = document.getElementById('top');
+const accEl = document.getElementById('acc');
+const accValEl = document.getElementById('accVal');
+const formulaEl = document.getElementById('formula');
+const btnNN   = document.getElementById('btnNN');
+const btnCSLS = document.getElementById('btnCSLS');
+const replay  = document.getElementById('replay');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+const PAL = {
+  cream: '#e8dcc1', muted: '#8a7e6d', faint: '#5e5648',
+  blue: '#82a8c3', caramel: '#d4895c', gold: '#c8a838',
+  sage: '#95b078', rust: '#c25c4a',
+};
+
+const SOURCES = ['cat', 'dog', 'bird', 'fish', 'water', 'fire'];
+const TARGETS = ['gatto', 'cane', 'uccello', 'pesce', 'acqua', 'fuoco', 'cosa'];
+const HUB_IDX = 6;  // 'cosa' is the hub target column
+const CORRECT = [0, 1, 2, 3, 4, 5];  // cat→gatto, dog→cane, ..., fire→fuoco
+
+// Cosine similarity matrix [source][target].
+// Diagonal is high (correct match similarity). The hub column ('cosa') is
+// consistently high — that's exactly what makes a hub.
+const COS = [
+  // gatto cane uccello pesce acqua fuoco  COSA(HUB)
+  [ 0.78, 0.40, 0.32,  0.35, 0.30, 0.22,  0.81 ], // cat
+  [ 0.45, 0.76, 0.40,  0.42, 0.35, 0.28,  0.79 ], // dog
+  [ 0.42, 0.40, 0.82,  0.48, 0.30, 0.22,  0.65 ], // bird
+  [ 0.38, 0.40, 0.45,  0.74, 0.55, 0.30,  0.78 ], // fish
+  [ 0.30, 0.32, 0.30,  0.55, 0.71, 0.45,  0.74 ], // water
+  [ 0.22, 0.28, 0.22,  0.30, 0.45, 0.85,  0.72 ], // fire
+];
+
+// Compute r_T (per-source top-K mean) and r_S (per-target top-K mean).
+const K = 3;
+function topKMean(arr, k) {
+  return [...arr].sort((a, b) => b - a).slice(0, k).reduce((a, b) => a + b, 0) / k;
+}
+const rT = SOURCES.map((_, i) => topKMean(COS[i], K));
+const rS = TARGETS.map((_, j) => topKMean(SOURCES.map((_, i) => COS[i][j]), K));
+
+// CSLS matrix.
+const CSLS = SOURCES.map((_, i) =>
+  TARGETS.map((_, j) => 2 * COS[i][j] - rT[i] - rS[j])
+);
+
+// Helper to find the argmax in a row.
+function argmaxRow(M, i) {
+  let bi = 0, bv = -Infinity;
+  for (let j = 0; j < M[i].length; j++) {
+    if (M[i][j] > bv) { bv = M[i][j]; bi = j; }
+  }
+  return bi;
+}
+
+const NN_PICKS   = SOURCES.map((_, i) => argmaxRow(COS,  i));
+const CSLS_PICKS = SOURCES.map((_, i) => argmaxRow(CSLS, i));
+const NN_CORRECT   = NN_PICKS.filter((p, i) => p === CORRECT[i]).length;
+const CSLS_CORRECT = CSLS_PICKS.filter((p, i) => p === CORRECT[i]).length;
+
+// Color helper: map a value in [vmin, vmax] to a warm gradient on the dark background.
+function valColor(v, vmin, vmax) {
+  const t = Math.max(0, Math.min(1, (v - vmin) / (vmax - vmin)));
+  // dark walnut → caramel → cream gold
+  const stops = [
+    [0.00, [38, 32, 26]],
+    [0.45, [88, 60, 38]],
+    [0.75, [180, 110, 64]],
+    [1.00, [230, 200, 110]],
+  ];
+  let i = 0;
+  while (i < stops.length - 1 && t > stops[i + 1][0]) i++;
+  const [t0, c0] = stops[i], [t1, c1] = stops[Math.min(i + 1, stops.length - 1)];
+  const u = (t1 === t0) ? 0 : (t - t0) / (t1 - t0);
+  const r = c0[0] + (c1[0] - c0[0]) * u;
+  const g = c0[1] + (c1[1] - c0[1]) * u;
+  const b = c0[2] + (c1[2] - c0[2]) * u;
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+
+let progress = 0;  // 0 = NN, 1 = CSLS
+let mode = 'nn';
+let autoLoop = true;
+let lastSwitchTs = performance.now();
+const AUTO_HOLD = 3400;
+const TRANSITION = 1400;
+
+function setMode(m, fromUser) {
+  if (m === mode) return;
+  mode = m;
+  if (fromUser) autoLoop = false;
+  lastSwitchTs = performance.now();
+  btnNN.classList.toggle('active', mode === 'nn');
+  btnNN.classList.toggle('nn', mode === 'nn');
+  btnCSLS.classList.toggle('active', mode === 'csls');
+  btnCSLS.classList.toggle('csls', mode === 'csls');
+}
+btnNN.addEventListener('click',   () => setMode('nn',   true));
+btnCSLS.addEventListener('click', () => setMode('csls', true));
+replay.addEventListener('click', () => {
+  setMode('nn', true);
+  progress = 0;
+  autoLoop = true;
+  lastSwitchTs = performance.now();
+});
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') {
+    setMode('nn', false);
+    progress = 0;
+    autoLoop = true;
+    lastSwitchTs = performance.now();
+  }
+});
+
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
+function withA(hex, a) { return hex + Math.round(a * 255).toString(16).padStart(2, '0'); }
+
+let lastFrame = 0;
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // Advance progress toward target mode.
+  const now = performance.now();
+  const target = mode === 'nn' ? 0 : 1;
+  const dt = lastFrame ? (now - lastFrame) / TRANSITION : 0;
+  lastFrame = now;
+  if (progress < target) progress = Math.min(target, progress + dt);
+  else if (progress > target) progress = Math.max(target, progress - dt);
+  if (autoLoop && (now - lastSwitchTs) > AUTO_HOLD + TRANSITION) {
+    setMode(mode === 'nn' ? 'csls' : 'nn', false);
+  }
+
+  const isNN = progress < 0.5;
+  const p = easeInOut(progress);
+
+  // Interpolated similarity matrix at current progress (smoothly blends NN ↔ CSLS).
+  const M = SOURCES.map((_, i) => TARGETS.map((_, j) => COS[i][j] + (CSLS[i][j] - COS[i][j]) * p));
+
+  // Layout: header row of target labels at top, row labels of source words on left, cells in between.
+  const padTop = 70;
+  const padLeft = 70;
+  const padRight = 18;
+  const padBot = 130;
+  const headerH = 56;
+  const gridX = padLeft;
+  const gridY = padTop + headerH;
+  const gridW = w - padLeft - padRight;
+  const gridH = h - gridY - padBot;
+  const cellW = gridW / TARGETS.length;
+  const cellH = gridH / SOURCES.length;
+
+  // Determine value range for current matrix (so coloring scales well in both modes).
+  let vmin = +Infinity, vmax = -Infinity;
+  for (let i = 0; i < SOURCES.length; i++) {
+    for (let j = 0; j < TARGETS.length; j++) {
+      vmin = Math.min(vmin, M[i][j]);
+      vmax = Math.max(vmax, M[i][j]);
+    }
+  }
+
+  // Header row: target words
+  for (let j = 0; j < TARGETS.length; j++) {
+    const cx = gridX + j * cellW + cellW / 2;
+    const label = TARGETS[j];
+    // Hub column: red badge + subtle background tint
+    const isHubCol = (j === HUB_IDX);
+    if (isHubCol) {
+      const hubAlpha = isNN ? 0.18 * (1 - p) + 0.06 : 0.08;
+      ctx.fillStyle = withA(PAL.rust, hubAlpha);
+      ctx.fillRect(gridX + j * cellW, padTop, cellW, headerH + gridH);
+    }
+    ctx.fillStyle = isHubCol ? PAL.cream : PAL.muted;
+    ctx.font = '600 12px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, padTop + headerH * 0.45);
+    if (isHubCol) {
+      ctx.fillStyle = isNN ? PAL.rust : withA(PAL.rust, 0.35);
+      ctx.font = '700 9px ui-monospace, monospace';
+      ctx.fillText('HUB', cx, padTop + headerH * 0.78);
+    }
+  }
+
+  // Row labels: source words
+  for (let i = 0; i < SOURCES.length; i++) {
+    const cy = gridY + i * cellH + cellH / 2;
+    ctx.fillStyle = PAL.blue;
+    ctx.beginPath(); ctx.arc(padLeft - 12, cy, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = PAL.cream;
+    ctx.font = '600 13px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(SOURCES[i], padLeft - 20, cy);
+  }
+
+  // Heatmap cells
+  for (let i = 0; i < SOURCES.length; i++) {
+    for (let j = 0; j < TARGETS.length; j++) {
+      const x = gridX + j * cellW;
+      const y = gridY + i * cellH;
+      ctx.fillStyle = valColor(M[i][j], vmin, vmax);
+      ctx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2);
+
+      // Score text
+      const isLight = (M[i][j] - vmin) / (vmax - vmin) > 0.55;
+      ctx.fillStyle = isLight ? '#1a1813' : '#e8dcc1';
+      ctx.font = '12px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(M[i][j].toFixed(2), x + cellW / 2, y + cellH / 2);
+    }
+  }
+
+  // Max-in-row highlight (the chosen target for this source).
+  for (let i = 0; i < SOURCES.length; i++) {
+    const j = argmaxRow(M, i);
+    const x = gridX + j * cellW;
+    const y = gridY + i * cellH;
+    const isCorrect = (j === CORRECT[i]);
+    ctx.strokeStyle = isCorrect ? PAL.sage : PAL.rust;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(x + 2, y + 2, cellW - 4, cellH - 4);
+    // Tiny ✓ / ✗ indicator
+    ctx.fillStyle = isCorrect ? PAL.sage : PAL.rust;
+    ctx.font = '700 11px -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(isCorrect ? '✓' : '✗', x + cellW - 5, y + 4);
+  }
+
+  // Header banner
+  topEl.className = 'top ' + (isNN ? 'nn' : 'csls');
+  topEl.textContent = isNN
+    ? 'nearest neighbor · cosine similarity scores'
+    : 'csls · density-corrected scores';
+
+  // Accuracy counter (interpolated)
+  const interp = Math.round(NN_CORRECT + (CSLS_CORRECT - NN_CORRECT) * progress);
+  accEl.className = 'acc ' + (isNN ? 'nn' : 'csls');
+  accValEl.textContent = interp + ' / ' + SOURCES.length;
+
+  // Formula
+  formulaEl.innerHTML = isNN
+    ? 'pick the column max in each row: <span class="var-cos">argmax cos(Wx, y)</span> · hub column wins almost everywhere'
+    : 'CSLS(x, y) = 2 <span class="var-cos">cos(Wx, y)</span> − <span class="var-rt">r<sub>T</sub>(Wx)</span> − <span class="var-rs">r<sub>S</sub>(y)</span> · hub column gets penalized';
+}
+
+function loop() { draw(); requestAnimationFrame(loop); }
+
+fit();
+window.addEventListener('resize', fit);
+loop();
+</script>
+</body>
+</html>

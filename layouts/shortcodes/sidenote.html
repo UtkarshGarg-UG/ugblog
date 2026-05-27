@@ -1,0 +1,11 @@
+{{ $id := .Get "id" | default (printf "sidenote-%d" (now.UnixNano)) }}
+{{ $trigger := .Get 0 | default "ⓘ" }}
+<span class="sidenote-wrapper">
+  <span class="sidenote-trigger" data-sidenote="{{ $id }}">{{ $trigger }}</span>
+  <span class="sidenote-popup" id="{{ $id }}">
+    <span class="sidenote-close">×</span>
+    <div class="sidenote-content">
+      {{ .Inner }}
+    </div>
+  </span>
+</span>

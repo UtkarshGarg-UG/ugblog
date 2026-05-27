@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bias Correction Explained</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            min-height: 100vh;
+            padding: 30px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            color: #58a6ff;
+            font-size: 1.4rem;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        @media (max-width: 800px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .chart-panel {
+            background: #161b22;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #30363d;
+        }
+
+        .chart-panel h3 {
+            font-size: 1rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chart-panel.biased h3 {
+            color: #f85149;
+        }
+
+        .chart-panel.corrected h3 {
+            color: #3fb950;
+        }
+
+        .chart-area {
+            background: #0d1117;
+            border-radius: 8px;
+            padding: 15px;
+            height: 280px;
+            position: relative;
+        }
+
+        .chart-svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .value-row {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+            gap: 10px;
+        }
+
+        .value-box {
+            flex: 1;
+            background: #21262d;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .value-label {
+            font-size: 0.7rem;
+            color: #8b949e;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .value-num {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1.1rem;
+        }
+
+        .chart-panel.biased .value-num {
+            color: #f85149;
+        }
+
+        .chart-panel.corrected .value-num {
+            color: #3fb950;
+        }
+
+        .correction-section {
+            background: #161b22;
+            border-radius: 12px;
+            padding: 25px;
+            border: 1px solid #30363d;
+            margin-bottom: 25px;
+        }
+
+        .correction-section h3 {
+            color: #58a6ff;
+            font-size: 1rem;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .correction-viz {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            flex-wrap: wrap;
+        }
+
+        .factor-display {
+            text-align: center;
+        }
+
+        .factor-label {
+            font-size: 0.75rem;
+            color: #8b949e;
+            margin-bottom: 8px;
+        }
+
+        .factor-circle {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .factor-circle.beta {
+            background: rgba(88, 166, 255, 0.15);
+            border: 2px solid #58a6ff;
+            color: #58a6ff;
+        }
+
+        .factor-circle.correction {
+            background: rgba(63, 185, 80, 0.15);
+            border: 2px solid #3fb950;
+            color: #3fb950;
+        }
+
+        .factor-sublabel {
+            font-size: 0.7rem;
+            color: #8b949e;
+        }
+
+        .arrow-connector {
+            font-size: 2rem;
+            color: #30363d;
+        }
+
+        .formula-box {
+            background: #0d1117;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .formula-main {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1.1rem;
+            color: #c9d1d9;
+            margin-bottom: 10px;
+        }
+
+        .formula-main .var {
+            color: #79c0ff;
+        }
+
+        .formula-main .num {
+            color: #ffa657;
+        }
+
+        .formula-explain {
+            font-size: 0.8rem;
+            color: #8b949e;
+        }
+
+        .controls {
+            background: #161b22;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #30363d;
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .control-label {
+            font-size: 0.85rem;
+            color: #8b949e;
+        }
+
+        .control-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            min-width: 40px;
+        }
+
+        input[type="range"] {
+            width: 150px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 25px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #238636;
+            color: #fff;
+        }
+
+        .btn-primary.running {
+            background: #f85149;
+        }
+
+        .btn-secondary {
+            background: #30363d;
+            color: #c9d1d9;
+        }
+
+        .insight-box {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 10px;
+            padding: 15px 20px;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        .insight-box strong {
+            color: #ffc107;
+        }
+
+        .true-line {
+            stroke-dasharray: 5, 5;
+        }
+
+        /* Enhanced ghost animations */
+        .ghost-fill {
+            animation: ghost-pulse 1s infinite alternate;
+        }
+
+        @keyframes ghost-pulse {
+            from { opacity: 0.3; }
+            to { opacity: 0.6; }
+        }
+
+        .error-indicator {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(248, 81, 73, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1rem;
+            font-weight: bold;
+            animation: error-shake 0.5s infinite;
+        }
+
+        @keyframes error-shake {
+            0%, 100% { transform: translateY(-50%) rotate(-2deg); }
+            50% { transform: translateY(-50%) rotate(2deg); }
+        }
+
+        .error-indicator.small {
+            background: rgba(63, 185, 80, 0.9);
+            animation: none;
+        }
+
+        .missing-history {
+            background: repeating-linear-gradient(
+                45deg,
+                rgba(248, 81, 73, 0.1),
+                rgba(248, 81, 73, 0.1) 5px,
+                transparent 5px,
+                transparent 10px
+            );
+            border: 2px dashed rgba(248, 81, 73, 0.5);
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #f85149;
+        }
+
+        .filling-animation {
+            animation: fill-in 2s ease-in-out infinite;
+        }
+
+        @keyframes fill-in {
+            0% { clip-path: inset(100% 0 0 0); }
+            50% { clip-path: inset(0 0 0 0); }
+            100% { clip-path: inset(100% 0 0 0); }
+        }
+
+        .dramatic-comparison {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+
+        .comparison-item {
+            text-align: center;
+        }
+
+        .comparison-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .comparison-item.biased .comparison-value {
+            color: #f85149;
+        }
+
+        .comparison-item.corrected .comparison-value {
+            color: #3fb950;
+        }
+
+        .comparison-item.target .comparison-value {
+            color: #58a6ff;
+        }
+
+        .comparison-label {
+            font-size: 0.75rem;
+            color: #8b949e;
+            margin-top: 5px;
+        }
+
+        .vs-separator {
+            display: flex;
+            align-items: center;
+            font-size: 1.5rem;
+            color: #30363d;
+        }
+
+        .correction-magic {
+            display: none;
+            text-align: center;
+            padding: 15px;
+            background: linear-gradient(135deg, rgba(63, 185, 80, 0.2), rgba(63, 185, 80, 0.1));
+            border: 1px solid rgba(63, 185, 80, 0.4);
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .correction-magic.show {
+            display: block;
+            animation: magic-appear 0.5s ease-out;
+        }
+
+        @keyframes magic-appear {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .correction-magic .icon {
+            font-size: 2rem;
+            margin-bottom: 5px;
+        }
+
+        .correction-magic .text {
+            font-size: 0.9rem;
+            color: #3fb950;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Why Adam Needs Bias Correction</h2>
+        <p class="subtitle">Zero-initialization causes estimates to be biased toward zero in early steps</p>
+
+        <div class="main-layout">
+            <div class="chart-panel biased">
+                <h3>❌ Without Correction (m)</h3>
+                <div class="chart-area">
+                    <svg class="chart-svg" id="chart-biased"></svg>
+                </div>
+                <div class="value-row">
+                    <div class="value-box">
+                        <div class="value-label">Raw m</div>
+                        <div class="value-num" id="m-raw">0.00</div>
+                    </div>
+                    <div class="value-box">
+                        <div class="value-label">True gradient</div>
+                        <div class="value-num" id="true-grad">5.00</div>
+                    </div>
+                    <div class="value-box">
+                        <div class="value-label">Error</div>
+                        <div class="value-num" id="error-raw">100%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-panel corrected">
+                <h3>✓ With Correction (m̂)</h3>
+                <div class="chart-area">
+                    <svg class="chart-svg" id="chart-corrected"></svg>
+                </div>
+                <div class="value-row">
+                    <div class="value-box">
+                        <div class="value-label">Corrected m̂</div>
+                        <div class="value-num" id="m-corrected">0.00</div>
+                    </div>
+                    <div class="value-box">
+                        <div class="value-label">True gradient</div>
+                        <div class="value-num" id="true-grad2">5.00</div>
+                    </div>
+                    <div class="value-box">
+                        <div class="value-label">Error</div>
+                        <div class="value-num" id="error-corrected">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dramatic-comparison">
+            <div class="comparison-item biased">
+                <div class="comparison-value" id="compare-biased">0.50</div>
+                <div class="comparison-label">Raw m (biased)</div>
+            </div>
+            <div class="vs-separator">→</div>
+            <div class="comparison-item corrected">
+                <div class="comparison-value" id="compare-corrected">5.00</div>
+                <div class="comparison-label">Corrected m̂</div>
+            </div>
+            <div class="vs-separator">≈</div>
+            <div class="comparison-item target">
+                <div class="comparison-value" id="compare-target">5.00</div>
+                <div class="comparison-label">True gradient</div>
+            </div>
+        </div>
+
+        <div class="correction-magic" id="correction-magic">
+            <div class="icon">✨</div>
+            <div class="text">Correction compensates for missing history!</div>
+        </div>
+
+        <div class="correction-section">
+            <h3>The Correction Factor</h3>
+            <div class="correction-viz">
+                <div class="factor-display">
+                    <div class="factor-label">β^t</div>
+                    <div class="factor-circle beta" id="beta-power-display">0.90</div>
+                    <div class="factor-sublabel">Decay factor</div>
+                </div>
+                <div class="arrow-connector">→</div>
+                <div class="factor-display">
+                    <div class="factor-label">1/(1 - β^t)</div>
+                    <div class="factor-circle correction" id="correction-display">10.0×</div>
+                    <div class="factor-sublabel">Correction multiplier</div>
+                </div>
+            </div>
+            <div class="formula-box">
+                <div class="formula-main">
+                    <span class="var">m̂</span> = <span class="var">m</span> / (1 - <span class="var">β</span><sup>t</sup>) = <span class="var">m</span> × <span class="num" id="multiplier">10.0</span>
+                </div>
+                <div class="formula-explain">
+                    At t=1: m = 0.1×g (biased!) → m̂ = m×10 = g (corrected!)
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <span class="control-label">Step (t)</span>
+                <input type="range" id="step-slider" min="1" max="50" step="1" value="1">
+                <span class="control-value" id="step-value">1</span>
+            </div>
+            <div class="control-group">
+                <span class="control-label">β</span>
+                <input type="range" id="beta-slider" min="0.8" max="0.99" step="0.01" value="0.9">
+                <span class="control-value" id="beta-value">0.90</span>
+            </div>
+            <div class="control-group">
+                <span class="control-label">True gradient</span>
+                <input type="range" id="grad-slider" min="1" max="10" step="0.5" value="5">
+                <span class="control-value" id="grad-value">5.0</span>
+            </div>
+            <div class="button-group">
+                <button class="btn-primary" id="animate-btn">▶ Animate</button>
+                <button class="btn-secondary" id="reset-btn">↺ Reset</button>
+            </div>
+        </div>
+
+        <div class="insight-box">
+            <strong>Why this matters:</strong> At step 1, we're computing m = β×0 + (1-β)×g = 0.1×g. We're averaging the gradient with zeros from "before training started"! The correction factor 1/(1-β^t) compensates for this. As t→∞, β^t→0, so the correction factor→1 (no correction needed once we have enough history).
+        </div>
+    </div>
+
+    <script>
+        let t = 1;
+        let beta = 0.9;
+        let trueGrad = 5;
+        let animating = false;
+        let animationId = null;
+
+        // History for charts
+        let mHistory = [];
+        let mCorrectedHistory = [];
+
+        function computeM(step, beta, grad) {
+            // m_t = (1 - β^t) * g (for constant gradient)
+            return (1 - Math.pow(beta, step)) * grad;
+        }
+
+        function computeMCorrected(m, step, beta) {
+            return m / (1 - Math.pow(beta, step));
+        }
+
+        function buildHistory() {
+            mHistory = [];
+            mCorrectedHistory = [];
+            for (let i = 1; i <= t; i++) {
+                const m = computeM(i, beta, trueGrad);
+                mHistory.push({ t: i, value: m });
+                mCorrectedHistory.push({ t: i, value: computeMCorrected(m, i, beta) });
+            }
+        }
+
+        function drawChart(svgId, history, trueVal, color, showTrue = true) {
+            const svg = document.getElementById(svgId);
+            const rect = svg.getBoundingClientRect();
+            const width = rect.width || 400;
+            const height = rect.height || 250;
+
+            const padding = { left: 50, right: 20, top: 20, bottom: 35 };
+            const chartWidth = width - padding.left - padding.right;
+            const chartHeight = height - padding.top - padding.bottom;
+
+            const maxT = 50;
+            const maxVal = Math.max(trueVal * 1.3, 1);
+
+            let html = '';
+
+            // Grid lines
+            for (let i = 0; i <= 4; i++) {
+                const y = padding.top + (i / 4) * chartHeight;
+                html += `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="#30363d" stroke-width="1"/>`;
+                const val = maxVal * (1 - i / 4);
+                html += `<text x="${padding.left - 8}" y="${y + 4}" fill="#8b949e" font-size="11" text-anchor="end">${val.toFixed(1)}</text>`;
+            }
+
+            // True value line
+            if (showTrue) {
+                const trueY = padding.top + (1 - trueVal / maxVal) * chartHeight;
+                html += `<line x1="${padding.left}" y1="${trueY}" x2="${width - padding.right}" y2="${trueY}" stroke="#3fb950" stroke-width="2" stroke-dasharray="6,4"/>`;
+                html += `<text x="${width - padding.right - 5}" y="${trueY - 8}" fill="#3fb950" font-size="11" text-anchor="end">True</text>`;
+            }
+
+            // Data line
+            if (history.length > 1) {
+                let pathD = '';
+                history.forEach((point, i) => {
+                    const x = padding.left + (point.t / maxT) * chartWidth;
+                    const y = padding.top + (1 - Math.min(point.value, maxVal) / maxVal) * chartHeight;
+                    pathD += (i === 0 ? 'M' : 'L') + `${x},${y}`;
+                });
+                html += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5"/>`;
+            }
+
+            // Data points
+            history.forEach((point) => {
+                const x = padding.left + (point.t / maxT) * chartWidth;
+                const y = padding.top + (1 - Math.min(point.value, maxVal) / maxVal) * chartHeight;
+                html += `<circle cx="${x}" cy="${y}" r="4" fill="${color}"/>`;
+            });
+
+            // Current point highlight
+            if (history.length > 0) {
+                const last = history[history.length - 1];
+                const x = padding.left + (last.t / maxT) * chartWidth;
+                const y = padding.top + (1 - Math.min(last.value, maxVal) / maxVal) * chartHeight;
+                html += `<circle cx="${x}" cy="${y}" r="8" fill="${color}" opacity="0.3"/>`;
+                html += `<circle cx="${x}" cy="${y}" r="5" fill="${color}"/>`;
+            }
+
+            // X-axis label
+            html += `<text x="${width / 2}" y="${height - 5}" fill="#8b949e" font-size="12" text-anchor="middle">step (t)</text>`;
+
+            svg.innerHTML = html;
+        }
+
+        function updateUI() {
+            const m = computeM(t, beta, trueGrad);
+            const mCorrected = computeMCorrected(m, t, beta);
+            const betaPower = Math.pow(beta, t);
+            const correctionFactor = 1 / (1 - betaPower);
+
+            document.getElementById('m-raw').textContent = m.toFixed(2);
+            document.getElementById('m-corrected').textContent = mCorrected.toFixed(2);
+            document.getElementById('true-grad').textContent = trueGrad.toFixed(2);
+            document.getElementById('true-grad2').textContent = trueGrad.toFixed(2);
+
+            const errorRaw = Math.abs(m - trueGrad) / trueGrad * 100;
+            const errorCorrected = Math.abs(mCorrected - trueGrad) / trueGrad * 100;
+            document.getElementById('error-raw').textContent = errorRaw.toFixed(0) + '%';
+            document.getElementById('error-corrected').textContent = errorCorrected.toFixed(1) + '%';
+
+            document.getElementById('beta-power-display').textContent = betaPower.toFixed(3);
+            document.getElementById('correction-display').textContent = correctionFactor.toFixed(1) + '×';
+            document.getElementById('multiplier').textContent = correctionFactor.toFixed(1);
+
+            buildHistory();
+            drawChart('chart-biased', mHistory, trueGrad, '#f85149');
+            drawChart('chart-corrected', mCorrectedHistory, trueGrad, '#3fb950');
+        }
+
+        function animate() {
+            if (!animating) return;
+
+            t++;
+            if (t > 50) {
+                stopAnimation();
+                return;
+            }
+
+            document.getElementById('step-slider').value = t;
+            document.getElementById('step-value').textContent = t;
+            updateUI();
+
+            animationId = setTimeout(animate, 120);
+        }
+
+        function startAnimation() {
+            t = 1;
+            animating = true;
+            document.getElementById('animate-btn').textContent = '⏸ Pause';
+            document.getElementById('animate-btn').classList.add('running');
+            animate();
+        }
+
+        function stopAnimation() {
+            animating = false;
+            document.getElementById('animate-btn').textContent = '▶ Animate';
+            document.getElementById('animate-btn').classList.remove('running');
+            if (animationId) clearTimeout(animationId);
+        }
+
+        function reset() {
+            stopAnimation();
+            t = 1;
+            document.getElementById('step-slider').value = 1;
+            document.getElementById('step-value').textContent = 1;
+            updateUI();
+        }
+
+        // Event listeners
+        document.getElementById('step-slider').addEventListener('input', (e) => {
+            t = parseInt(e.target.value);
+            document.getElementById('step-value').textContent = t;
+            updateUI();
+        });
+
+        document.getElementById('beta-slider').addEventListener('input', (e) => {
+            beta = parseFloat(e.target.value);
+            document.getElementById('beta-value').textContent = beta.toFixed(2);
+            updateUI();
+        });
+
+        document.getElementById('grad-slider').addEventListener('input', (e) => {
+            trueGrad = parseFloat(e.target.value);
+            document.getElementById('grad-value').textContent = trueGrad.toFixed(1);
+            updateUI();
+        });
+
+        document.getElementById('animate-btn').addEventListener('click', () => {
+            if (animating) {
+                stopAnimation();
+            } else {
+                startAnimation();
+            }
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', reset);
+
+        // Initial render
+        updateUI();
+    </script>
+</body>
+</html>

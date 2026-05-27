@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>linguistic mismatch</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px; box-sizing: border-box;
+    position: relative;
+  }
+  canvas { display: block; width: 100%; max-width: 600px; height: auto; aspect-ratio: 1 / 1; }
+  .hint {
+    position: absolute; top: 22px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #d4895c; transition: color 0.5s ease;
+  }
+  .hint.p1 { color: #d4895c; }
+  .hint.p2 { color: #c8a838; }
+  .hint.p3 { color: #c47a8a; }
+  .hint.p4 { color: #82a8c3; }
+  .hint.p5 { color: #c25c4a; }
+  .hint.p6 { color: #95b078; }
+  .hint.p7 { color: #7aa8a8; }
+  .nav {
+    position: absolute; bottom: 22px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 7px;
+  }
+  .nav .pip {
+    width: 22px; height: 3px; border-radius: 2px;
+    background: rgba(138, 126, 109, 0.25);
+    transition: background 0.3s ease, transform 0.2s ease;
+    cursor: pointer;
+  }
+  .nav .pip:hover {
+    background: rgba(138, 126, 109, 0.55);
+    transform: scaleY(1.5);
+  }
+  .nav .pip.active { background: currentColor; }
+  .replay {
+    position: absolute; top: 14px; right: 14px;
+    background: none; border: 1px solid #3a352d; color: #8a7e6d;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; padding: 0; cursor: pointer; z-index: 10;
+    transition: all 0.2s ease;
+  }
+  .replay:hover { border-color: #82a8c3; color: #82a8c3; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="hint p1" id="hint">kinship · one english word, five hindi words</div>
+  <button class="replay" id="replay" title="replay" aria-label="replay">↻</button>
+  <canvas id="cv"></canvas>
+  <div class="nav" id="nav"></div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const hint = document.getElementById('hint');
+const navEl = document.getElementById('nav');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+let t0 = performance.now();
+
+const PALETTE = {
+  cream: '#e8dcc1',
+  muted: '#8a7e6d',
+  faint: '#5e5648',
+  blue:  '#82a8c3',
+  caramel: '#d4895c',
+  gold: '#c8a838',
+  sage: '#95b078',
+  rust: '#c25c4a',
+  rose: '#c47a8a',
+  teal: '#7aa8a8',
+};
+
+// Phases in the order of the section 3 bullets in the prose.
+const phases = [
+  { name: 'kinship',    hint: 'kinship · one english word, five hindi words',          dur: 4.8, color: PALETTE.caramel, cls: 'p1' },
+  { name: 'color',      hint: 'color · languages partition the spectrum differently',  dur: 5.8, color: PALETTE.gold,    cls: 'p2' },
+  { name: 'gender',     hint: 'gender · every italian noun has one',                   dur: 5.0, color: PALETTE.rose,    cls: 'p3' },
+  { name: 'morphology', hint: 'morphology · one turkish word, six pieces',             dur: 5.2, color: PALETTE.blue,    cls: 'p4' },
+  { name: 'polysemy',   hint: 'polysemy · one english word, five italian senses',      dur: 5.0, color: PALETTE.rust,    cls: 'p5' },
+  { name: 'aspect',     hint: 'aspect · russian verbs come in pairs',                  dur: 5.0, color: PALETTE.sage,    cls: 'p6' },
+  { name: 'culture',    hint: 'culture · words with no clean english translation',     dur: 5.6, color: PALETTE.teal,    cls: 'p7' },
+];
+const T_LOOP = phases.reduce((s, p) => s + p.dur, 0);
+const PHASE_STARTS = (() => {
+  const arr = []; let acc = 0;
+  for (const p of phases) { arr.push(acc); acc += p.dur; }
+  return arr;
+})();
+
+// Build clickable pip nav.
+phases.forEach((p, i) => {
+  const pip = document.createElement('div');
+  pip.className = 'pip';
+  pip.style.color = p.color;
+  pip.title = p.name;
+  pip.addEventListener('click', () => {
+    t0 = performance.now() - PHASE_STARTS[i] * 1000;
+  });
+  navEl.appendChild(pip);
+});
+const pips = navEl.querySelectorAll('.pip');
+
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+function getPhase(t) {
+  for (let i = 0; i < phases.length; i++) {
+    const start = PHASE_STARTS[i];
+    if (t < start + phases[i].dur) {
+      return { idx: i, local: (t - start) / phases[i].dur };
+    }
+  }
+  return { idx: phases.length - 1, local: 1 };
+}
+
+function phaseAlpha(local) {
+  if (local < 0.10) return easeInOut(local / 0.10);
+  if (local > 0.90) return easeInOut((1 - local) / 0.10);
+  return 1;
+}
+
+// ============== Phase 1: KINSHIP (Hindi uncles) ==============
+const kinshipPoints = [
+  { word: 'ताऊ',   gloss: "father's older brother",  x: -0.85, y:  0.85 },
+  { word: 'चाचा',  gloss: "father's younger brother", x:  0.85, y:  0.85 },
+  { word: 'मामा',  gloss: "mother's brother",         x: -1.05, y:  0.00 },
+  { word: 'फूफा',  gloss: "father's sister's hus.",   x:  1.05, y:  0.00 },
+  { word: 'मौसा',  gloss: "mother's sister's hus.",   x:  0.00, y: -1.05 },
+];
+
+function drawKinship(t, alpha, cx, cy, scale) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const pulse = (Math.sin(t * 1.5) + 1) / 2;
+  ctx.fillStyle = PALETTE.blue;
+  ctx.beginPath(); ctx.arc(cx, cy, 9 + pulse * 2, 0, Math.PI*2); ctx.fill();
+
+  ctx.fillStyle = PALETTE.cream;
+  ctx.font = '700 22px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('uncle', cx, cy - 24);
+  ctx.fillStyle = PALETTE.muted;
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillText('en', cx, cy + 28);
+
+  kinshipPoints.forEach((m, i) => {
+    const mx = cx + m.x * scale, my = cy - m.y * scale;
+    ctx.strokeStyle = 'rgba(212, 137, 92, 0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy); ctx.lineTo(mx, my);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const tt = ((t * 0.45 + i * 0.18) % 1);
+    const px = cx + (mx - cx) * tt;
+    const py = cy + (my - cy) * tt;
+    ctx.fillStyle = 'rgba(212, 137, 92, 0.85)';
+    ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = PALETTE.caramel;
+    ctx.beginPath(); ctx.arc(mx, my, 7, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = PALETTE.cream;
+    ctx.font = '600 18px "Noto Sans Devanagari", "Devanagari MT", "Devanagari Sangam MN", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(m.word, mx, my - 16);
+    ctx.fillStyle = PALETTE.muted;
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillText(m.gloss, mx, my + 24);
+  });
+  ctx.restore();
+}
+
+// ============== Phase 2: COLOR ==============
+const colorRows = [
+  {
+    lang: 'English',
+    boundaries: [0.00, 0.08, 0.16, 0.30, 0.55, 0.78, 1.00],
+    labels:     ['red', 'orange', 'yellow', 'green', 'blue', 'purple'],
+  },
+  {
+    lang: 'Russian',
+    boundaries: [0.00, 0.08, 0.16, 0.30, 0.55, 0.70, 0.82, 1.00],
+    labels:     ['красн.', 'оранж.', 'жёлт.', 'зелён.', 'синий', 'голуб.', 'фиол.'],
+    highlight: 5,
+  },
+  {
+    lang: "Hanunó'o",
+    boundaries: [0.00, 0.30, 0.55, 0.80, 1.00],
+    labels:     ['mabíru', 'malatuy', 'marára', 'malakí'],
+    sublabels:  ['(dark)', '(green)', '(red)',   '(light)'],
+  },
+];
+
+function spectrumColor(u) {
+  const hue = 0 + u * 280;
+  return `hsl(${hue}, 70%, 55%)`;
+}
+
+function drawColor(t, alpha, cx, cy, scale) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const stripeW = scale * 2.2;
+  const stripeH = 30;      // larger band
+  const rowGap = 56;       // larger gap
+  const totalH = colorRows.length * stripeH + (colorRows.length - 1) * rowGap;
+  const startY = cy - totalH / 2;
+  const startX = cx - stripeW / 2;
+
+  colorRows.forEach((row, ri) => {
+    const y = startY + ri * (stripeH + rowGap);
+
+    ctx.fillStyle = PALETTE.muted;
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(row.lang, startX, y - 10);
+
+    const grad = ctx.createLinearGradient(startX, 0, startX + stripeW, 0);
+    for (let s = 0; s <= 10; s++) grad.addColorStop(s / 10, spectrumColor(s / 10));
+    ctx.fillStyle = grad;
+    ctx.fillRect(startX, y, stripeW, stripeH);
+
+    for (let i = 0; i < row.boundaries.length; i++) {
+      const bx = startX + row.boundaries[i] * stripeW;
+      const isHighlightSide = (row.highlight !== undefined && (i === row.highlight || i === row.highlight + 1));
+      ctx.strokeStyle = isHighlightSide ? PALETTE.cream : 'rgba(26, 24, 19, 0.85)';
+      ctx.lineWidth = isHighlightSide ? 2 : 1.4;
+      ctx.beginPath();
+      ctx.moveTo(bx, y - 5);
+      ctx.lineTo(bx, y + stripeH + 5);
+      ctx.stroke();
+    }
+
+    for (let i = 0; i < row.labels.length; i++) {
+      const lx = startX + (row.boundaries[i] + row.boundaries[i + 1]) / 2 * stripeW;
+      const ly = y + stripeH + 16;
+      const highlight = (row.highlight === i || row.highlight === i + 1);
+      ctx.fillStyle = highlight ? PALETTE.cream : PALETTE.muted;
+      ctx.font = highlight ? '700 11px -apple-system, sans-serif' : '11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(row.labels[i], lx, ly);
+      if (row.sublabels && row.sublabels[i]) {
+        ctx.fillStyle = PALETTE.faint;
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.fillText(row.sublabels[i], lx, ly + 12);
+      }
+    }
+
+    ctx.fillStyle = PALETTE.muted;
+    ctx.font = '10px ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(row.labels.length + ' terms', startX + stripeW, y - 10);
+  });
+
+  ctx.restore();
+}
+
+// ============== Phase 3: GENDER (Italian) ==============
+const genderItems = [
+  { it: 'la tavola',   en: 'table', gender: 'f', x: -1.0, y:  0.85 },
+  { it: 'il libro',    en: 'book',  gender: 'm', x:  0.4, y:  0.85 },
+  { it: 'la luna',     en: 'moon',  gender: 'f', x: -1.0, y:  0.15 },
+  { it: 'il sole',     en: 'sun',   gender: 'm', x:  0.4, y:  0.15 },
+  { it: 'la macchina', en: 'car',   gender: 'f', x: -1.0, y: -0.55 },
+  { it: 'il treno',    en: 'train', gender: 'm', x:  0.4, y: -0.55 },
+];
+
+function drawGender(t, alpha, cx, cy, scale) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  ctx.fillStyle = PALETTE.muted;
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('feminine', cx + -1.0 * scale - 4, cy - 1.10 * scale);
+  ctx.fillText('masculine', cx + 0.4 * scale - 4, cy - 1.10 * scale);
+
+  genderItems.forEach((item) => {
+    const ix = cx + item.x * scale, iy = cy - item.y * scale;
+    const isF = item.gender === 'f';
+    const col = isF ? PALETTE.rose : PALETTE.blue;
+
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(ix - 14, iy, 4, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = PALETTE.cream;
+    ctx.font = '600 14px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(item.it, ix, iy + 4);
+
+    ctx.fillStyle = PALETTE.faint;
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillText('"' + item.en + '"', ix, iy + 18);
+  });
+
+  const arrowY = cy + 1.0 * scale;
+  ctx.strokeStyle = PALETTE.muted;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(cx - 1.0 * scale, arrowY);
+  ctx.lineTo(cx + 1.0 * scale, arrowY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = PALETTE.muted;
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('gender direction in italian embedding space', cx, arrowY + 18);
+  ctx.fillText('(no equivalent direction in english)', cx, arrowY + 32);
+
+  ctx.restore();
+}
+
+// ============== Phase 4: MORPHOLOGY (Turkish breakdown) ==============
+const morphemes = [
+  { piece: 'ev',   gloss: 'house'    },
+  { piece: 'ler',  gloss: 'plural'   },
+  { piece: 'imiz', gloss: 'our'      },
+  { piece: 'de',   gloss: 'in'       },
+  { piece: 'ki',   gloss: 'the ones' },
+  { piece: 'ler',  gloss: 'plural'   },
+];
+
+function drawMorphology(t, alpha, cx, cy, scale) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // 1. Big Turkish word at the top
+  ctx.fillStyle = PALETTE.cream;
+  ctx.font = '700 24px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('evlerimizdekiler', cx, cy - scale * 0.85);
+
+  // 2. Subtitle: "Turkish · one word"
+  ctx.fillStyle = PALETTE.muted;
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.fillText('Turkish · one word', cx, cy - scale * 0.85 + 22);
+
+  // 3. Morpheme chips
+  const chipW = 56;
+  const chipH = 30;
+  const gap = 6;
+  const totalW = morphemes.length * chipW + (morphemes.length - 1) * gap;
+  const startX = cx - totalW / 2;
+  const chipY = cy - chipH / 2;
+
+  morphemes.forEach((m, i) => {
+    const x = startX + i * (chipW + gap);
+    // Chip background
+    ctx.fillStyle = 'rgba(130, 168, 195, 0.10)';
+    ctx.strokeStyle = 'rgba(130, 168, 195, 0.45)';
+    ctx.lineWidth = 1;
+    const r = 4;
+    ctx.beginPath();
+    ctx.moveTo(x + r, chipY);
+    ctx.lineTo(x + chipW - r, chipY);
+    ctx.quadraticCurveTo(x + chipW, chipY, x + chipW, chipY + r);
+    ctx.lineTo(x + chipW, chipY + chipH - r);
+    ctx.quadraticCurveTo(x + chipW, chipY + chipH, x + chipW - r, chipY + chipH);
+    ctx.lineTo(x + r, chipY + chipH);
+    ctx.quadraticCurveTo(x, chipY + chipH, x, chipY + chipH - r);
+    ctx.lineTo(x, chipY + r);
+    ctx.quadraticCurveTo(x, chipY, x + r, chipY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Morpheme text
+    ctx.fillStyle = PALETTE.cream;
+    ctx.font = '600 14px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(m.piece, x + chipW / 2, chipY + chipH / 2);
+
+    // Gloss below
+    ctx.fillStyle = PALETTE.muted;
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillText(m.gloss, x + chipW / 2, chipY + chipH + 8);
+  });
+
+  // 4. Equivalent at bottom
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = PALETTE.muted;
+  ctx.font = '12px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('English · six words', cx, cy + scale * 0.75);
+  ctx.fillStyle = PALETTE.cream;
+  ctx.font = '600 17px -apple-system, sans-serif';
+  ctx.fillText('"the ones in our houses"', cx, cy + scale * 0.95);
+
+  ctx.restore();
+}
+
+// ============== Phase 5: POLYSEMY (English "run" → Italian) ==============
+const polysemyTargets = [
+  { word: 'gestire',    gloss: 'manage (a business)',  x:  0.85, y:  0.95 },
+  { word: 'eseguire',   gloss: 'execute (code)',       x: -1.15, y:  0.35 },
+  { word: 'scorrere',   gloss: 'flow (water)',         x:  1.15, y:  0.10 },
+  { word: 'correre',    gloss: 'race (on foot)',       x: -0.85, y: -0.95 },
+  { word: 'candidarsi', gloss: 'run for office',       x:  0.55, y: -1.05 },
+];
+
+function drawPolysemy(t, alpha, cx, cy, scale) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Center: English "run"
+  const pulse = (Math.sin(t * 1.5) + 1) / 2;
+  ctx.fillStyle = PALETTE.blue;
+  ctx.beginPath(); ctx.arc(cx, cy, 9 + pulse * 2, 0, Math.PI*2); ctx.fill();
+
+  ctx.fillStyle = PALETTE.cream;
+  ctx.font = '700 22px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('run', cx, cy - 24);
+  ctx.fillStyle = PALETTE.muted;
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillText('en', cx, cy + 28);
+
+  polysemyTargets.forEach((m, i) => {
+    const mx = cx + m.x * scale, my = cy - m.y * scale;
+
+    ctx.strokeStyle = 'rgba(194, 92, 74, 0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy); ctx.lineTo(mx, my);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const tt = ((t * 0.45 + i * 0.18) % 1);
+    const px = cx + (mx - cx) * tt;
+    const py = cy + (my - cy) * tt;
+    ctx.fillStyle = 'rgba(194, 92, 74, 0.85)';
+    ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = PALETTE.rust;
+    ctx.beginPath(); ctx.arc(mx, my, 7, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = PALETTE.cream;
+    ctx.font = '600 15px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(m.word, mx, my - 16);
+    ctx.fillStyle = PALETTE.muted;
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillText(m.gloss, mx, my + 24);
+  });
+  ctx.restore();
+}
+
+// ============== Phase 6: ASPECT (Russian verb pairs) ==============
+const aspectPairs = [
+  { imp: 'писать',  perf: 'написать',  gloss: 'write / finished writing' },
+  { imp: 'читать',  perf: 'прочитать', gloss: 'read / finished reading' },
+  { imp: 'идти',    perf: 'пойти',     gloss: 'go / start going' },
+];
+
+function drawAspect(t, alpha, cx, cy, scale) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const startY = cy - scale * 0.95;
+  const rowH = scale * 0.65;
+
+  ctx.fillStyle = PALETTE.muted;
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('imperfective', cx - scale * 0.55, startY - 18);
+  ctx.fillText('perfective',   cx + scale * 0.55, startY - 18);
+
+  aspectPairs.forEach((p, i) => {
+    const y = startY + i * rowH;
+    const xImp = cx - scale * 0.55;
+    const xPrf = cx + scale * 0.55;
+
+    ctx.fillStyle = PALETTE.cream;
+    ctx.font = '600 16px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.imp, xImp, y);
+
+    ctx.fillStyle = PALETTE.sage;
+    ctx.fillText(p.perf, xPrf, y);
+
+    ctx.strokeStyle = 'rgba(149, 176, 120, 0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(xImp + 50, y - 4);
+    ctx.lineTo(xPrf - 50, y - 4);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(149, 176, 120, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(xPrf - 50, y - 4);
+    ctx.lineTo(xPrf - 56, y - 8);
+    ctx.lineTo(xPrf - 56, y);
+    ctx.closePath(); ctx.fill();
+
+    const tt = ((t * 0.5 + i * 0.25) % 1);
+    const px = xImp + 50 + (xPrf - xImp - 100) * tt;
+    ctx.fillStyle = PALETTE.gold;
+    ctx.beginPath(); ctx.arc(px, y - 4, 2.5, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = PALETTE.faint;
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.fillText(p.gloss, cx, y + 18);
+  });
+
+  ctx.restore();
+}
+
+// ============== Phase 7: CULTURE-SPECIFIC CONCEPTS ==============
+const cultureWords = [
+  { word: 'Schadenfreude', lang: 'German',     gloss: 'joy at another\'s misfortune', x: -0.65, y:  0.55 },
+  { word: '木漏れ日',        lang: 'Japanese',   gloss: 'sunlight filtering through leaves', romaji: 'komorebi', x:  0.65, y:  0.55 },
+  { word: 'Hygge',         lang: 'Danish',     gloss: 'warm, cozy contentment',     x: -0.65, y: -0.55 },
+  { word: 'Saudade',       lang: 'Portuguese', gloss: 'bittersweet longing',         x:  0.65, y: -0.55 },
+];
+
+function drawCulture(t, alpha, cx, cy, scale) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  cultureWords.forEach((w, i) => {
+    const x = cx + w.x * scale;
+    const y = cy - w.y * scale;
+
+    // Subtle background card
+    const cardW = scale * 0.85;
+    const cardH = scale * 0.55;
+    ctx.fillStyle = 'rgba(122, 168, 168, 0.06)';
+    ctx.strokeStyle = 'rgba(122, 168, 168, 0.35)';
+    ctx.lineWidth = 1;
+    const r = 8;
+    const cx0 = x - cardW / 2, cy0 = y - cardH / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx0 + r, cy0);
+    ctx.lineTo(cx0 + cardW - r, cy0);
+    ctx.quadraticCurveTo(cx0 + cardW, cy0, cx0 + cardW, cy0 + r);
+    ctx.lineTo(cx0 + cardW, cy0 + cardH - r);
+    ctx.quadraticCurveTo(cx0 + cardW, cy0 + cardH, cx0 + cardW - r, cy0 + cardH);
+    ctx.lineTo(cx0 + r, cy0 + cardH);
+    ctx.quadraticCurveTo(cx0, cy0 + cardH, cx0, cy0 + cardH - r);
+    ctx.lineTo(cx0, cy0 + r);
+    ctx.quadraticCurveTo(cx0, cy0, cx0 + r, cy0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Word
+    ctx.fillStyle = PALETTE.cream;
+    ctx.font = '700 17px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(w.word, x, y - 14);
+
+    // Romaji (only for Japanese)
+    if (w.romaji) {
+      ctx.fillStyle = PALETTE.muted;
+      ctx.font = 'italic 10px -apple-system, sans-serif';
+      ctx.fillText(w.romaji, x, y);
+    }
+
+    // Language tag
+    ctx.fillStyle = PALETTE.teal;
+    ctx.font = '600 9px -apple-system, sans-serif';
+    ctx.fillText(w.lang.toUpperCase(), x, w.romaji ? y + 12 : y + 4);
+
+    // Gloss
+    ctx.fillStyle = PALETTE.muted;
+    ctx.font = '10px -apple-system, sans-serif';
+    const glossY = w.romaji ? y + 26 : y + 18;
+    ctx.fillText(w.gloss, x, glossY);
+  });
+
+  // Bottom note
+  ctx.fillStyle = PALETTE.faint;
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('no clean rotational image in english embedding space', cx, cy + scale * 1.15);
+
+  ctx.restore();
+}
+
+// ============== Master draw ==============
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2, scale = Math.min(w, h) * 0.30;
+
+  const tNow = (performance.now() - t0) / 1000;
+  const t = ((tNow % T_LOOP) + T_LOOP) % T_LOOP;
+  const { idx, local } = getPhase(t);
+  const alpha = phaseAlpha(local);
+
+  switch (phases[idx].name) {
+    case 'kinship':    drawKinship(t, alpha, cx, cy, scale); break;
+    case 'color':      drawColor(t, alpha, cx, cy, scale); break;
+    case 'gender':     drawGender(t, alpha, cx, cy, scale); break;
+    case 'morphology': drawMorphology(t, alpha, cx, cy, scale); break;
+    case 'polysemy':   drawPolysemy(t, alpha, cx, cy, scale); break;
+    case 'aspect':     drawAspect(t, alpha, cx, cy, scale); break;
+    case 'culture':    drawCulture(t, alpha, cx, cy, scale); break;
+  }
+
+  if (hint.textContent !== phases[idx].hint) hint.textContent = phases[idx].hint;
+  hint.className = 'hint ' + phases[idx].cls;
+
+  pips.forEach((pip, i) => pip.classList.toggle('active', i === idx));
+}
+
+function loop() { draw(); requestAnimationFrame(loop); }
+
+document.getElementById('replay').addEventListener('click', () => {
+  t0 = performance.now();
+});
+
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') {
+    t0 = performance.now();
+  }
+});
+
+fit();
+window.addEventListener('resize', fit);
+loop();
+</script>
+</body>
+</html>

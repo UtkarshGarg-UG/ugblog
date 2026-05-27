@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Transformations Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #58a6ff;
+        }
+
+        .visualization {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .panel h3 {
+            color: #8b949e;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        canvas {
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .controls {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            color: #8b949e;
+            min-width: 120px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            max-width: 200px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            min-width: 60px;
+        }
+
+        .matrix-display {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'SF Mono', Monaco, monospace;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .matrix-display .bracket {
+            color: #8b949e;
+        }
+
+        .matrix-display .entry {
+            color: #7ee787;
+            display: inline-block;
+            width: 60px;
+        }
+
+        .presets {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 8px 16px;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #2ea043;
+        }
+
+        button.secondary {
+            background: #30363d;
+        }
+
+        button.secondary:hover {
+            background: #3c444d;
+        }
+
+        .info {
+            background: rgba(56, 139, 253, 0.1);
+            border: 1px solid rgba(56, 139, 253, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .info strong {
+            color: #58a6ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>How Matrices Transform Space</h2>
+
+        <div class="visualization">
+            <div class="panel">
+                <h3>Original Space</h3>
+                <canvas id="original" width="280" height="280"></canvas>
+            </div>
+
+            <div class="panel">
+                <h3>After Transformation W</h3>
+                <canvas id="transformed" width="280" height="280"></canvas>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="presets">
+                <button onclick="setPreset('identity')">Identity</button>
+                <button onclick="setPreset('scale')">Scale (2×)</button>
+                <button onclick="setPreset('rotate')">Rotate 45°</button>
+                <button onclick="setPreset('shear')">Shear</button>
+                <button onclick="setPreset('stretch')">Stretch (ill-conditioned)</button>
+                <button onclick="setPreset('reflect')">Reflect</button>
+                <button class="secondary" onclick="randomMatrix()">Random</button>
+            </div>
+
+            <div class="control-row">
+                <label>W[0,0]:</label>
+                <input type="range" id="a" min="-3" max="3" step="0.1" value="1">
+                <span class="value" id="a-val">1.0</span>
+
+                <label>W[0,1]:</label>
+                <input type="range" id="b" min="-3" max="3" step="0.1" value="0">
+                <span class="value" id="b-val">0.0</span>
+            </div>
+
+            <div class="control-row">
+                <label>W[1,0]:</label>
+                <input type="range" id="c" min="-3" max="3" step="0.1" value="0">
+                <span class="value" id="c-val">0.0</span>
+
+                <label>W[1,1]:</label>
+                <input type="range" id="d" min="-3" max="3" step="0.1" value="1">
+                <span class="value" id="d-val">1.0</span>
+            </div>
+
+            <div class="matrix-display">
+                <span class="bracket">[</span>
+                <span class="entry" id="m-a">1.0</span>
+                <span class="entry" id="m-b">0.0</span>
+                <span class="bracket">]</span><br>
+                <span class="bracket">[</span>
+                <span class="entry" id="m-c">0.0</span>
+                <span class="entry" id="m-d">1.0</span>
+                <span class="bracket">]</span>
+            </div>
+
+            <div class="info" id="info">
+                <strong>Identity matrix:</strong> No transformation. Every point stays where it is.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const origCanvas = document.getElementById('original');
+        const transCanvas = document.getElementById('transformed');
+        const origCtx = origCanvas.getContext('2d');
+        const transCtx = transCanvas.getContext('2d');
+
+        let matrix = { a: 1, b: 0, c: 0, d: 1 };
+
+        const presets = {
+            identity: { a: 1, b: 0, c: 0, d: 1, info: '<strong>Identity matrix:</strong> No transformation. Every point stays where it is.' },
+            scale: { a: 2, b: 0, c: 0, d: 2, info: '<strong>Scaling:</strong> Uniformly stretches space by 2× in all directions. Condition number = 1.' },
+            rotate: { a: 0.707, b: -0.707, c: 0.707, d: 0.707, info: '<strong>Rotation:</strong> Rotates space 45° counterclockwise. This is an orthogonal matrix — it preserves lengths and angles.' },
+            shear: { a: 1, b: 0.5, c: 0, d: 1, info: '<strong>Shear:</strong> Skews space horizontally. Vertical lines become diagonal, but horizontal lines stay horizontal.' },
+            stretch: { a: 3, b: 0, c: 0, d: 0.3, info: '<strong>Ill-conditioned stretch:</strong> Stretches 3× horizontally, compresses 0.3× vertically. Condition number = 10. This is what makes optimization hard!' },
+            reflect: { a: 1, b: 0, c: 0, d: -1, info: '<strong>Reflection:</strong> Flips space across the x-axis. Also orthogonal — determinant is -1.' }
+        };
+
+        function setPreset(name) {
+            const p = presets[name];
+            matrix = { a: p.a, b: p.b, c: p.c, d: p.d };
+            updateSliders();
+            document.getElementById('info').innerHTML = p.info;
+            draw();
+        }
+
+        function randomMatrix() {
+            matrix.a = (Math.random() * 4 - 2).toFixed(1) * 1;
+            matrix.b = (Math.random() * 4 - 2).toFixed(1) * 1;
+            matrix.c = (Math.random() * 4 - 2).toFixed(1) * 1;
+            matrix.d = (Math.random() * 4 - 2).toFixed(1) * 1;
+            updateSliders();
+            updateInfo();
+            draw();
+        }
+
+        function updateSliders() {
+            document.getElementById('a').value = matrix.a;
+            document.getElementById('b').value = matrix.b;
+            document.getElementById('c').value = matrix.c;
+            document.getElementById('d').value = matrix.d;
+            document.getElementById('a-val').textContent = matrix.a.toFixed(1);
+            document.getElementById('b-val').textContent = matrix.b.toFixed(1);
+            document.getElementById('c-val').textContent = matrix.c.toFixed(1);
+            document.getElementById('d-val').textContent = matrix.d.toFixed(1);
+            document.getElementById('m-a').textContent = matrix.a.toFixed(1);
+            document.getElementById('m-b').textContent = matrix.b.toFixed(1);
+            document.getElementById('m-c').textContent = matrix.c.toFixed(1);
+            document.getElementById('m-d').textContent = matrix.d.toFixed(1);
+        }
+
+        function updateInfo() {
+            const det = matrix.a * matrix.d - matrix.b * matrix.c;
+            const trace = matrix.a + matrix.d;
+
+            // Compute singular values
+            const ata = [
+                [matrix.a * matrix.a + matrix.c * matrix.c, matrix.a * matrix.b + matrix.c * matrix.d],
+                [matrix.a * matrix.b + matrix.c * matrix.d, matrix.b * matrix.b + matrix.d * matrix.d]
+            ];
+            const traceATA = ata[0][0] + ata[1][1];
+            const detATA = ata[0][0] * ata[1][1] - ata[0][1] * ata[1][0];
+            const disc = Math.sqrt(Math.max(0, traceATA * traceATA - 4 * detATA));
+            const s1 = Math.sqrt(Math.max(0, (traceATA + disc) / 2));
+            const s2 = Math.sqrt(Math.max(0, (traceATA - disc) / 2));
+            const cond = s2 > 0.001 ? (s1 / s2).toFixed(1) : '∞';
+
+            document.getElementById('info').innerHTML = `
+                <strong>Determinant:</strong> ${det.toFixed(2)} (area scale factor)<br>
+                <strong>Singular values:</strong> σ₁ = ${s1.toFixed(2)}, σ₂ = ${s2.toFixed(2)}<br>
+                <strong>Condition number:</strong> ${cond}
+            `;
+        }
+
+        function transform(x, y) {
+            return [
+                matrix.a * x + matrix.b * y,
+                matrix.c * x + matrix.d * y
+            ];
+        }
+
+        function drawGrid(ctx, transformFn = null, scale = 60) {
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Draw grid lines
+            ctx.strokeStyle = '#21262d';
+            ctx.lineWidth = 1;
+
+            for (let i = -3; i <= 3; i++) {
+                // Vertical lines
+                ctx.beginPath();
+                for (let t = -3; t <= 3; t += 0.1) {
+                    let [x, y] = transformFn ? transformFn(i, t) : [i, t];
+                    const sx = cx + x * scale;
+                    const sy = cy - y * scale;
+                    if (t === -3) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                }
+                ctx.stroke();
+
+                // Horizontal lines
+                ctx.beginPath();
+                for (let t = -3; t <= 3; t += 0.1) {
+                    let [x, y] = transformFn ? transformFn(t, i) : [t, i];
+                    const sx = cx + x * scale;
+                    const sy = cy - y * scale;
+                    if (t === -3) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                }
+                ctx.stroke();
+            }
+
+            // Draw axes
+            ctx.strokeStyle = '#484f58';
+            ctx.lineWidth = 2;
+
+            // X axis
+            ctx.beginPath();
+            let [x1, y1] = transformFn ? transformFn(-3, 0) : [-3, 0];
+            let [x2, y2] = transformFn ? transformFn(3, 0) : [3, 0];
+            ctx.moveTo(cx + x1 * scale, cy - y1 * scale);
+            ctx.lineTo(cx + x2 * scale, cy - y2 * scale);
+            ctx.stroke();
+
+            // Y axis
+            ctx.beginPath();
+            [x1, y1] = transformFn ? transformFn(0, -3) : [0, -3];
+            [x2, y2] = transformFn ? transformFn(0, 3) : [0, 3];
+            ctx.moveTo(cx + x1 * scale, cy - y1 * scale);
+            ctx.lineTo(cx + x2 * scale, cy - y2 * scale);
+            ctx.stroke();
+
+            // Draw unit circle
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let theta = 0; theta <= 2 * Math.PI + 0.1; theta += 0.05) {
+                const px = Math.cos(theta);
+                const py = Math.sin(theta);
+                let [x, y] = transformFn ? transformFn(px, py) : [px, py];
+                const sx = cx + x * scale;
+                const sy = cy - y * scale;
+                if (theta === 0) ctx.moveTo(sx, sy);
+                else ctx.lineTo(sx, sy);
+            }
+            ctx.stroke();
+
+            // Draw basis vectors
+            // e1
+            ctx.strokeStyle = '#f85149';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            let [ex, ey] = transformFn ? transformFn(1, 0) : [1, 0];
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + ex * scale, cy - ey * scale);
+            ctx.stroke();
+
+            // Arrow head
+            const angle1 = Math.atan2(-ey, ex);
+            ctx.beginPath();
+            ctx.moveTo(cx + ex * scale, cy - ey * scale);
+            ctx.lineTo(cx + ex * scale - 10 * Math.cos(angle1 - 0.3), cy - ey * scale + 10 * Math.sin(angle1 - 0.3));
+            ctx.moveTo(cx + ex * scale, cy - ey * scale);
+            ctx.lineTo(cx + ex * scale - 10 * Math.cos(angle1 + 0.3), cy - ey * scale + 10 * Math.sin(angle1 + 0.3));
+            ctx.stroke();
+
+            // e2
+            ctx.strokeStyle = '#3fb950';
+            ctx.beginPath();
+            [ex, ey] = transformFn ? transformFn(0, 1) : [0, 1];
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + ex * scale, cy - ey * scale);
+            ctx.stroke();
+
+            const angle2 = Math.atan2(-ey, ex);
+            ctx.beginPath();
+            ctx.moveTo(cx + ex * scale, cy - ey * scale);
+            ctx.lineTo(cx + ex * scale - 10 * Math.cos(angle2 - 0.3), cy - ey * scale + 10 * Math.sin(angle2 - 0.3));
+            ctx.moveTo(cx + ex * scale, cy - ey * scale);
+            ctx.lineTo(cx + ex * scale - 10 * Math.cos(angle2 + 0.3), cy - ey * scale + 10 * Math.sin(angle2 + 0.3));
+            ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = '#f85149';
+            ctx.font = 'bold 14px sans-serif';
+            let [lx, ly] = transformFn ? transformFn(1.2, 0) : [1.2, 0];
+            ctx.fillText('e₁', cx + lx * scale, cy - ly * scale + 5);
+
+            ctx.fillStyle = '#3fb950';
+            [lx, ly] = transformFn ? transformFn(0, 1.2) : [0, 1.2];
+            ctx.fillText('e₂', cx + lx * scale + 5, cy - ly * scale);
+        }
+
+        function draw() {
+            drawGrid(origCtx);
+            drawGrid(transCtx, transform);
+        }
+
+        // Event listeners
+        ['a', 'b', 'c', 'd'].forEach(id => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                matrix[id] = parseFloat(e.target.value);
+                document.getElementById(id + '-val').textContent = matrix[id].toFixed(1);
+                document.getElementById('m-' + id).textContent = matrix[id].toFixed(1);
+                updateInfo();
+                draw();
+            });
+        });
+
+        // Initial draw
+        draw();
+    </script>
+</body>
+</html>

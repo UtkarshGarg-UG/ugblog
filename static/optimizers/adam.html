@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adam: Best of Both Worlds</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            position: relative;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .overlay-stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(13, 17, 23, 0.95);
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px 20px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: auto auto;
+            gap: 6px 25px;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #8b949e;
+        }
+
+        .stat-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #a371f7;
+            font-size: 0.9rem;
+        }
+
+        .side-panel {
+            background: #161b22;
+            border-left: 1px solid #30363d;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow-y: auto;
+        }
+
+        .title-box {
+            text-align: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #30363d;
+        }
+
+        .title-box h3 {
+            color: #a371f7;
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+        }
+
+        .title-box p {
+            font-size: 0.8rem;
+            color: #8b949e;
+        }
+
+        .component-card {
+            background: #21262d;
+            border-radius: 10px;
+            padding: 12px;
+            border-left: 3px solid;
+        }
+
+        .component-card.momentum {
+            border-left-color: #f85149;
+        }
+
+        .component-card.adaptive {
+            border-left-color: #58a6ff;
+        }
+
+        .component-card h4 {
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .component-card.momentum h4 {
+            color: #f85149;
+        }
+
+        .component-card.adaptive h4 {
+            color: #58a6ff;
+        }
+
+        .component-icon {
+            font-size: 1rem;
+        }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .bar-label {
+            width: 35px;
+            font-size: 0.7rem;
+            color: #8b949e;
+        }
+
+        .bar-container {
+            flex: 1;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            transition: width 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 4px;
+        }
+
+        .bar-fill.m {
+            background: linear-gradient(90deg, #f8514980, #f85149);
+        }
+
+        .bar-fill.v {
+            background: linear-gradient(90deg, #58a6ff80, #58a6ff);
+        }
+
+        .bar-num {
+            font-size: 0.6rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #fff;
+        }
+
+        .formula-mini {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.7rem;
+            color: #8b949e;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .formula-mini .var {
+            color: #79c0ff;
+        }
+
+        .combined-box {
+            background: rgba(163, 113, 247, 0.1);
+            border: 1px solid rgba(163, 113, 247, 0.3);
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .combined-box h4 {
+            color: #a371f7;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+        }
+
+        .combined-formula {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.8rem;
+            color: #c9d1d9;
+            background: #0d1117;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .combined-formula .m-color {
+            color: #f85149;
+        }
+
+        .combined-formula .v-color {
+            color: #58a6ff;
+        }
+
+        .controls-section {
+            background: #21262d;
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: auto;
+        }
+
+        .slider-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .slider-group label {
+            display: block;
+            font-size: 0.75rem;
+            color: #8b949e;
+            margin-bottom: 4px;
+        }
+
+        .slider-group .value {
+            float: right;
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #a371f7;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 5px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #a371f7;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .btn-start {
+            background: #238636;
+            color: #fff;
+        }
+
+        .btn-start.running {
+            background: #f85149;
+        }
+
+        .btn-reset {
+            background: #30363d;
+            color: #c9d1d9;
+        }
+
+        .insight-mini {
+            font-size: 0.75rem;
+            color: #8b949e;
+            text-align: center;
+            line-height: 1.4;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 6px;
+        }
+
+        .insight-mini strong {
+            color: #a371f7;
+        }
+
+        /* X-ray decomposition visualization */
+        .xray-viz {
+            background: rgba(163, 113, 247, 0.1);
+            border: 1px solid rgba(163, 113, 247, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .xray-viz h4 {
+            color: #a371f7;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .xray-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .xray-component {
+            flex: 1;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            transition: all 0.2s;
+        }
+
+        .xray-component.direction {
+            background: linear-gradient(90deg, rgba(248, 81, 73, 0.3), rgba(248, 81, 73, 0.6));
+            color: #f85149;
+            border: 1px solid rgba(248, 81, 73, 0.5);
+        }
+
+        .xray-component.scale {
+            background: linear-gradient(90deg, rgba(88, 166, 255, 0.3), rgba(88, 166, 255, 0.6));
+            color: #58a6ff;
+            border: 1px solid rgba(88, 166, 255, 0.5);
+        }
+
+        .xray-component.combined {
+            background: linear-gradient(90deg, rgba(163, 113, 247, 0.3), rgba(163, 113, 247, 0.6));
+            color: #a371f7;
+            border: 1px solid rgba(163, 113, 247, 0.5);
+        }
+
+        .xray-operator {
+            font-size: 1rem;
+            color: #8b949e;
+        }
+
+        .update-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+        }
+
+        .update-arrow .arrow {
+            font-size: 1.2rem;
+            transition: transform 0.2s;
+        }
+
+        .update-arrow.active .arrow {
+            animation: arrow-pulse 0.5s infinite alternate;
+        }
+
+        @keyframes arrow-pulse {
+            from { transform: scale(1); opacity: 0.7; }
+            to { transform: scale(1.2); opacity: 1; }
+        }
+
+        .update-magnitude {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.8rem;
+            color: #a371f7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="canvas-container">
+            <canvas id="three-canvas"></canvas>
+            <div class="overlay-stats">
+                <div class="stat-grid">
+                    <span class="stat-label">Step</span>
+                    <span class="stat-value" id="step">0</span>
+                    <span class="stat-label">Loss</span>
+                    <span class="stat-value" id="loss">—</span>
+                    <span class="stat-label">Position</span>
+                    <span class="stat-value" id="position">—</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="side-panel">
+            <div class="title-box">
+                <h3>Adam = Momentum + RMSprop</h3>
+                <p>Best of both worlds</p>
+            </div>
+
+            <div class="component-card momentum">
+                <h4><span class="component-icon">🔴</span> First Moment (m) — Momentum</h4>
+                <div class="bar-row">
+                    <span class="bar-label">m̂₁</span>
+                    <div class="bar-container">
+                        <div class="bar-fill m" id="m1-bar" style="width: 50%">
+                            <span class="bar-num" id="m1-val">0.0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="bar-row">
+                    <span class="bar-label">m̂₂</span>
+                    <div class="bar-container">
+                        <div class="bar-fill m" id="m2-bar" style="width: 50%">
+                            <span class="bar-num" id="m2-val">0.0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="formula-mini"><span class="var">m</span> = β₁·<span class="var">m</span> + (1-β₁)·<span class="var">g</span></div>
+            </div>
+
+            <div class="component-card adaptive">
+                <h4><span class="component-icon">🔵</span> Second Moment (v) — Adaptive</h4>
+                <div class="bar-row">
+                    <span class="bar-label">√v̂₁</span>
+                    <div class="bar-container">
+                        <div class="bar-fill v" id="v1-bar" style="width: 50%">
+                            <span class="bar-num" id="v1-val">0.0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="bar-row">
+                    <span class="bar-label">√v̂₂</span>
+                    <div class="bar-container">
+                        <div class="bar-fill v" id="v2-bar" style="width: 50%">
+                            <span class="bar-num" id="v2-val">0.0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="formula-mini"><span class="var">v</span> = β₂·<span class="var">v</span> + (1-β₂)·<span class="var">g</span>²</div>
+            </div>
+
+            <div class="combined-box">
+                <h4>Combined Update</h4>
+                <div class="combined-formula">
+                    θ = θ - η · <span class="m-color">m̂</span> / (√<span class="v-color">v̂</span> + ε)
+                </div>
+            </div>
+
+            <div class="xray-viz">
+                <h4>✨ X-Ray: Update Decomposition</h4>
+                <div class="xray-row">
+                    <div class="xray-component direction" id="xray-dir">
+                        Direction: m̂
+                    </div>
+                    <span class="xray-operator">÷</span>
+                    <div class="xray-component scale" id="xray-scale">
+                        Scale: √v̂
+                    </div>
+                </div>
+                <div class="xray-row" style="justify-content: center;">
+                    <span class="xray-operator">=</span>
+                </div>
+                <div class="xray-row">
+                    <div class="xray-component combined" id="xray-combined">
+                        Adaptive Update
+                    </div>
+                </div>
+                <div class="update-arrow" id="update-arrow">
+                    <span class="arrow">➜</span>
+                    <span class="update-magnitude" id="update-mag">|Δθ| = 0.00</span>
+                </div>
+            </div>
+
+            <div class="insight-mini">
+                <strong>m̂</strong> provides direction (smoothed gradient)<br>
+                <strong>√v̂</strong> provides scaling (per-param learning rate)
+            </div>
+
+            <div class="controls-section">
+                <div class="slider-row">
+                    <div class="slider-group">
+                        <label>η (LR) <span class="value" id="lr-display">0.15</span></label>
+                        <input type="range" id="lr-slider" min="0.05" max="0.4" step="0.01" value="0.15">
+                    </div>
+                    <div class="slider-group">
+                        <label>β₁ <span class="value" id="beta1-display">0.90</span></label>
+                        <input type="range" id="beta1-slider" min="0.8" max="0.99" step="0.01" value="0.9">
+                    </div>
+                </div>
+                <div class="slider-row">
+                    <div class="slider-group">
+                        <label>β₂ <span class="value" id="beta2-display">0.999</span></label>
+                        <input type="range" id="beta2-slider" min="0.9" max="0.9999" step="0.0001" value="0.999">
+                    </div>
+                    <div class="slider-group">
+                        <label>Stretch <span class="value" id="stretch-display">12</span></label>
+                        <input type="range" id="stretch-slider" min="2" max="20" step="1" value="12">
+                    </div>
+                </div>
+                <div class="button-row">
+                    <button class="btn-start" id="start-btn">▶ Start</button>
+                    <button class="btn-reset" id="reset-btn">↺ Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const container = document.getElementById('canvas-container');
+        const canvas = document.getElementById('three-canvas');
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0d1117);
+
+        const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(8, 10, 10);
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        scene.add(new THREE.AmbientLight(0x404040, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // State
+        let stretchFactor = 12;
+        let lr = 0.15;
+        let beta1 = 0.9;
+        let beta2 = 0.999;
+        const eps = 1e-8;
+
+        const startPos = [3.5, 2.5];
+        let theta = [...startPos];
+        let m = [0, 0];
+        let v = [0, 0];
+        let trajectory = [];
+        let running = false;
+        let step = 0;
+
+        let surfaceMesh, ballMesh;
+
+        function createSurface() {
+            scene.children = scene.children.filter(c => c.type === 'AmbientLight' || c.type === 'DirectionalLight');
+
+            const geometry = new THREE.PlaneGeometry(8, 8, 60, 60);
+            const positions = geometry.attributes.position.array;
+
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i];
+                const z = positions[i + 1];
+                const y = 0.5 * (stretchFactor * x * x / 16 + z * z / 16) * 3;
+                positions[i + 2] = y;
+            }
+
+            geometry.computeVertexNormals();
+
+            const colors = [];
+            for (let i = 0; i < positions.length; i += 3) {
+                const y = positions[i + 2];
+                const t = Math.min(y / 4, 1);
+                colors.push(0.2 + t * 0.3, 0.1 + t * 0.2, 0.4 - t * 0.1);
+            }
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.85
+            });
+
+            surfaceMesh = new THREE.Mesh(geometry, material);
+            surfaceMesh.rotation.x = -Math.PI / 2;
+            scene.add(surfaceMesh);
+
+            const wireGeo = new THREE.WireframeGeometry(geometry);
+            const wire = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({ color: 0x30363d, opacity: 0.3, transparent: true }));
+            wire.rotation.x = -Math.PI / 2;
+            scene.add(wire);
+
+            // Recreate ball
+            createBall();
+        }
+
+        function createBall() {
+            const geo = new THREE.SphereGeometry(0.18, 32, 32);
+            const mat = new THREE.MeshPhongMaterial({ color: 0xa371f7, emissive: 0xa371f7, emissiveIntensity: 0.3 });
+            ballMesh = new THREE.Mesh(geo, mat);
+            scene.add(ballMesh);
+
+            const glowGeo = new THREE.SphereGeometry(0.28, 32, 32);
+            const glowMat = new THREE.MeshBasicMaterial({ color: 0xa371f7, transparent: true, opacity: 0.2 });
+            ballMesh.add(new THREE.Mesh(glowGeo, glowMat));
+
+            updateBallPosition();
+        }
+
+        function getHeight(x, z) {
+            return 0.5 * (stretchFactor * x * x / 16 + z * z / 16) * 3;
+        }
+
+        function loss(t) {
+            return 0.5 * (stretchFactor * t[0] * t[0] + t[1] * t[1]);
+        }
+
+        function gradient(t) {
+            return [stretchFactor * t[0], t[1]];
+        }
+
+        function updateBallPosition() {
+            if (!ballMesh) return;
+            ballMesh.position.set(theta[0], getHeight(theta[0], theta[1]) + 0.18, theta[1]);
+        }
+
+        function drawTrajectory() {
+            scene.children = scene.children.filter(c => c.name !== 'traj' && c.name !== 'trajDot');
+            if (trajectory.length < 2) return;
+
+            const points = trajectory.map(p => new THREE.Vector3(p[0], getHeight(p[0], p[1]) + 0.05, p[1]));
+            const geo = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xa371f7 }));
+            line.name = 'traj';
+            scene.add(line);
+
+            const dotGeo = new THREE.SphereGeometry(0.04, 8, 8);
+            const dotMat = new THREE.MeshBasicMaterial({ color: 0xa371f7 });
+            points.forEach((p, i) => {
+                if (i % 2 === 0) {
+                    const dot = new THREE.Mesh(dotGeo, dotMat);
+                    dot.position.copy(p);
+                    dot.name = 'trajDot';
+                    scene.add(dot);
+                }
+            });
+        }
+
+        function updateSidePanel() {
+            const t = step || 1;
+            const mHat = [m[0] / (1 - Math.pow(beta1, t)), m[1] / (1 - Math.pow(beta1, t))];
+            const vHat = [v[0] / (1 - Math.pow(beta2, t)), v[1] / (1 - Math.pow(beta2, t))];
+            const sqrtV = [Math.sqrt(vHat[0]) + eps, Math.sqrt(vHat[1]) + eps];
+
+            const maxM = 15;
+            const maxV = 8;
+
+            document.getElementById('m1-bar').style.width = `${Math.min(Math.abs(mHat[0]) / maxM, 1) * 100}%`;
+            document.getElementById('m2-bar').style.width = `${Math.min(Math.abs(mHat[1]) / maxM, 1) * 100}%`;
+            document.getElementById('m1-val').textContent = mHat[0].toFixed(1);
+            document.getElementById('m2-val').textContent = mHat[1].toFixed(1);
+
+            document.getElementById('v1-bar').style.width = `${Math.min(sqrtV[0] / maxV, 1) * 100}%`;
+            document.getElementById('v2-bar').style.width = `${Math.min(sqrtV[1] / maxV, 1) * 100}%`;
+            document.getElementById('v1-val').textContent = sqrtV[0].toFixed(2);
+            document.getElementById('v2-val').textContent = sqrtV[1].toFixed(2);
+
+            // Update X-ray visualization
+            const mMag = Math.sqrt(mHat[0] * mHat[0] + mHat[1] * mHat[1]);
+            const vMag = (sqrtV[0] + sqrtV[1]) / 2;
+            const updateMag = Math.sqrt(
+                Math.pow(lr * mHat[0] / sqrtV[0], 2) +
+                Math.pow(lr * mHat[1] / sqrtV[1], 2)
+            );
+
+            // Update X-ray component displays
+            document.getElementById('xray-dir').textContent = `m̂ = ${mMag.toFixed(2)}`;
+            document.getElementById('xray-scale').textContent = `√v̂ = ${vMag.toFixed(2)}`;
+            document.getElementById('xray-combined').textContent = `Update = ${(mMag / vMag).toFixed(2)}`;
+            document.getElementById('update-mag').textContent = `|Δθ| = ${updateMag.toFixed(4)}`;
+
+            // Animate the update arrow when running
+            const updateArrow = document.getElementById('update-arrow');
+            if (running) {
+                updateArrow.classList.add('active');
+            } else {
+                updateArrow.classList.remove('active');
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('step').textContent = step;
+            document.getElementById('loss').textContent = loss(theta).toFixed(4);
+            document.getElementById('position').textContent = `(${theta[0].toFixed(2)}, ${theta[1].toFixed(2)})`;
+            updateSidePanel();
+        }
+
+        function adamStep() {
+            step++;
+            const grad = gradient(theta);
+
+            m[0] = beta1 * m[0] + (1 - beta1) * grad[0];
+            m[1] = beta1 * m[1] + (1 - beta1) * grad[1];
+
+            v[0] = beta2 * v[0] + (1 - beta2) * grad[0] * grad[0];
+            v[1] = beta2 * v[1] + (1 - beta2) * grad[1] * grad[1];
+
+            const mHat = [m[0] / (1 - Math.pow(beta1, step)), m[1] / (1 - Math.pow(beta1, step))];
+            const vHat = [v[0] / (1 - Math.pow(beta2, step)), v[1] / (1 - Math.pow(beta2, step))];
+
+            theta[0] -= lr * mHat[0] / (Math.sqrt(vHat[0]) + eps);
+            theta[1] -= lr * mHat[1] / (Math.sqrt(vHat[1]) + eps);
+
+            trajectory.push([...theta]);
+        }
+
+        function reset() {
+            running = false;
+            document.getElementById('start-btn').textContent = '▶ Start';
+            document.getElementById('start-btn').classList.remove('running');
+
+            theta = [...startPos];
+            m = [0, 0];
+            v = [0, 0];
+            trajectory = [[...theta]];
+            step = 0;
+
+            updateBallPosition();
+            drawTrajectory();
+            updateUI();
+        }
+
+        // Mouse controls
+        let rotation = { x: 0.7, y: 0.4 };
+        let isDragging = false;
+        let prevMouse = { x: 0, y: 0 };
+
+        canvas.addEventListener('mousedown', e => {
+            isDragging = true;
+            prevMouse = { x: e.clientX, y: e.clientY };
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (!isDragging) return;
+            rotation.y += (e.clientX - prevMouse.x) * 0.005;
+            rotation.x += (e.clientY - prevMouse.y) * 0.005;
+            rotation.x = Math.max(0.3, Math.min(1.3, rotation.x));
+            prevMouse = { x: e.clientX, y: e.clientY };
+        });
+
+        document.addEventListener('mouseup', () => isDragging = false);
+
+        // Controls
+        document.getElementById('lr-slider').addEventListener('input', e => {
+            lr = parseFloat(e.target.value);
+            document.getElementById('lr-display').textContent = lr.toFixed(2);
+        });
+
+        document.getElementById('beta1-slider').addEventListener('input', e => {
+            beta1 = parseFloat(e.target.value);
+            document.getElementById('beta1-display').textContent = beta1.toFixed(2);
+        });
+
+        document.getElementById('beta2-slider').addEventListener('input', e => {
+            beta2 = parseFloat(e.target.value);
+            document.getElementById('beta2-display').textContent = beta2.toFixed(4);
+        });
+
+        document.getElementById('stretch-slider').addEventListener('input', e => {
+            stretchFactor = parseFloat(e.target.value);
+            document.getElementById('stretch-display').textContent = stretchFactor;
+            createSurface();
+            reset();
+        });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            running = !running;
+            const btn = document.getElementById('start-btn');
+            btn.textContent = running ? '⏸ Pause' : '▶ Start';
+            btn.classList.toggle('running', running);
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', reset);
+
+        // Animation
+        let lastTime = 0;
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            const radius = 14;
+            camera.position.x = radius * Math.sin(rotation.y) * Math.cos(rotation.x);
+            camera.position.y = radius * Math.sin(rotation.x);
+            camera.position.z = radius * Math.cos(rotation.y) * Math.cos(rotation.x);
+            camera.lookAt(0, 1, 0);
+
+            if (running && time - lastTime > 70) {
+                if (loss(theta) > 0.001 && loss(theta) < 100 && step < 300) {
+                    adamStep();
+                    updateBallPosition();
+                    drawTrajectory();
+                    updateUI();
+                } else {
+                    running = false;
+                    document.getElementById('start-btn').textContent = '▶ Start';
+                    document.getElementById('start-btn').classList.remove('running');
+                }
+                lastTime = time;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // Init
+        createSurface();
+        reset();
+        animate(0);
+    </script>
+</body>
+</html>

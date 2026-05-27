@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Newton-Schulz Convergence</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #58a6ff;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 25px;
+            font-size: 0.9rem;
+        }
+
+        .main-viz {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .panel h3 {
+            color: #8b949e;
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        canvas {
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .iteration-display {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+
+        .iter-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 10px 15px;
+            text-align: center;
+            min-width: 60px;
+        }
+
+        .iter-box.active {
+            border-color: #58a6ff;
+            background: rgba(88, 166, 255, 0.1);
+        }
+
+        .iter-num {
+            font-size: 0.7rem;
+            color: #8b949e;
+        }
+
+        .iter-val {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+            color: #7ee787;
+        }
+
+        .controls {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        label {
+            color: #8b949e;
+            min-width: 180px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            max-width: 300px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            min-width: 60px;
+        }
+
+        .formula {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: center;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .formula .main {
+            font-size: 1.1rem;
+            color: #7ee787;
+            margin-bottom: 10px;
+        }
+
+        .formula .note {
+            font-size: 0.8rem;
+            color: #8b949e;
+        }
+
+        .explanation {
+            background: rgba(56, 139, 253, 0.1);
+            border: 1px solid rgba(56, 139, 253, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .explanation strong {
+            color: #58a6ff;
+        }
+
+        .convergence-table {
+            margin-top: 15px;
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .convergence-table th, .convergence-table td {
+            padding: 8px 12px;
+            text-align: center;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .convergence-table th {
+            color: #8b949e;
+            font-size: 0.8rem;
+        }
+
+        .convergence-table td {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+        }
+
+        .converged {
+            color: #3fb950;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Newton-Schulz: Iterating Toward Orthogonality</h2>
+        <p class="subtitle">φ(σ) = aσ + bσ³ + cσ⁵ converges any singular value to 1</p>
+
+        <div class="main-viz">
+            <div class="panel">
+                <h3>Singular Value Convergence</h3>
+                <canvas id="convergence" width="450" height="300"></canvas>
+
+                <div class="iteration-display" id="iter-display">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+
+            <div class="panel">
+                <h3>The φ Function</h3>
+                <canvas id="phi-func" width="300" height="300"></canvas>
+
+                <div class="formula">
+                    <div class="main">φ(σ) = 3.4445σ - 4.775σ³ + 2.0315σ⁵</div>
+                    <div class="note">Fixed point: φ(1) = 1, φ'(1) = 0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <label>Starting singular value σ₀:</label>
+                <input type="range" id="sigma0" min="0.1" max="2.5" step="0.05" value="0.3">
+                <span class="value" id="sigma0-val">0.30</span>
+            </div>
+
+            <div class="control-row">
+                <label>Number of iterations:</label>
+                <input type="range" id="iters" min="1" max="10" step="1" value="5">
+                <span class="value" id="iters-val">5</span>
+            </div>
+        </div>
+
+        <table class="convergence-table" id="table">
+            <thead>
+                <tr>
+                    <th>Iteration</th>
+                    <th>σ</th>
+                    <th>|σ - 1|</th>
+                    <th>Convergence Rate</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+            </tbody>
+        </table>
+
+        <div class="explanation">
+            <strong>Quadratic Convergence:</strong> Because φ'(1) = 0, the Newton-Schulz iteration has quadratic convergence near σ = 1.
+            Each iteration roughly squares the error: if |σₖ - 1| = 0.1, then |σₖ₊₁ - 1| ≈ 0.01.
+            <br><br>
+            This means just 5 iterations are enough to get very close to 1 from almost any starting point in (0, √3).
+        </div>
+    </div>
+
+    <script>
+        const convCanvas = document.getElementById('convergence');
+        const phiCanvas = document.getElementById('phi-func');
+        const convCtx = convCanvas.getContext('2d');
+        const phiCtx = phiCanvas.getContext('2d');
+
+        const a = 3.4445, b = -4.775, c = 2.0315;
+
+        let sigma0 = 0.3;
+        let numIters = 5;
+
+        function phi(s) {
+            return a * s + b * s * s * s + c * s * s * s * s * s;
+        }
+
+        function iterate(s0, n) {
+            const values = [s0];
+            let s = s0;
+            for (let i = 0; i < n; i++) {
+                s = phi(s);
+                values.push(s);
+            }
+            return values;
+        }
+
+        function drawPhiFunction() {
+            const w = phiCanvas.width;
+            const h = phiCanvas.height;
+            const ctx = phiCtx;
+
+            ctx.clearRect(0, 0, w, h);
+
+            const margin = 40;
+            const plotW = w - 2 * margin;
+            const plotH = h - 2 * margin;
+
+            // Transform from [0, 2] x [0, 2] to canvas
+            const toCanvasX = x => margin + (x / 2) * plotW;
+            const toCanvasY = y => h - margin - (y / 2) * plotH;
+
+            // Grid
+            ctx.strokeStyle = '#21262d';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const x = margin + (i / 4) * plotW;
+                const y = h - margin - (i / 4) * plotH;
+                ctx.beginPath();
+                ctx.moveTo(x, margin);
+                ctx.lineTo(x, h - margin);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(margin, y);
+                ctx.lineTo(w - margin, y);
+                ctx.stroke();
+            }
+
+            // y = x line (identity)
+            ctx.strokeStyle = '#484f58';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(0), toCanvasY(0));
+            ctx.lineTo(toCanvasX(2), toCanvasY(2));
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // y = 1 line (target)
+            ctx.strokeStyle = '#3fb950';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(toCanvasX(0), toCanvasY(1));
+            ctx.lineTo(toCanvasX(2), toCanvasY(1));
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // φ function
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let s = 0.05; s <= 2; s += 0.02) {
+                const y = phi(s);
+                const cx = toCanvasX(s);
+                const cy = toCanvasY(Math.max(0, Math.min(2, y)));
+                if (s === 0.05) ctx.moveTo(cx, cy);
+                else ctx.lineTo(cx, cy);
+            }
+            ctx.stroke();
+
+            // Mark fixed point (1, 1)
+            ctx.fillStyle = '#3fb950';
+            ctx.beginPath();
+            ctx.arc(toCanvasX(1), toCanvasY(1), 6, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Mark current starting point
+            ctx.fillStyle = '#f0883e';
+            ctx.beginPath();
+            ctx.arc(toCanvasX(sigma0), toCanvasY(phi(sigma0)), 5, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Labels
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '12px sans-serif';
+            ctx.fillText('0', margin - 10, h - margin + 15);
+            ctx.fillText('1', toCanvasX(1) - 3, h - margin + 15);
+            ctx.fillText('2', toCanvasX(2) - 3, h - margin + 15);
+            ctx.fillText('1', margin - 15, toCanvasY(1) + 4);
+            ctx.fillText('σ', w - margin + 10, h - margin + 5);
+            ctx.fillText('φ(σ)', margin - 5, margin - 10);
+        }
+
+        function drawConvergence() {
+            const w = convCanvas.width;
+            const h = convCanvas.height;
+            const ctx = convCtx;
+
+            ctx.clearRect(0, 0, w, h);
+
+            const margin = { left: 50, right: 20, top: 20, bottom: 40 };
+            const plotW = w - margin.left - margin.right;
+            const plotH = h - margin.top - margin.bottom;
+
+            const values = iterate(sigma0, numIters);
+
+            // Y range: 0 to max(2, max value)
+            const maxY = Math.max(2, ...values.map(v => Math.abs(v)));
+            const minY = 0;
+
+            const toCanvasX = i => margin.left + (i / numIters) * plotW;
+            const toCanvasY = y => margin.top + plotH - ((y - minY) / (maxY - minY)) * plotH;
+
+            // Grid
+            ctx.strokeStyle = '#21262d';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= numIters; i++) {
+                const x = toCanvasX(i);
+                ctx.beginPath();
+                ctx.moveTo(x, margin.top);
+                ctx.lineTo(x, h - margin.bottom);
+                ctx.stroke();
+            }
+
+            // y = 1 line
+            ctx.strokeStyle = '#3fb950';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(margin.left, toCanvasY(1));
+            ctx.lineTo(w - margin.right, toCanvasY(1));
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Convergence line
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            values.forEach((v, i) => {
+                const x = toCanvasX(i);
+                const y = toCanvasY(v);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Points
+            values.forEach((v, i) => {
+                const x = toCanvasX(i);
+                const y = toCanvasY(v);
+                ctx.fillStyle = Math.abs(v - 1) < 0.01 ? '#3fb950' : '#58a6ff';
+                ctx.beginPath();
+                ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+
+            // Labels
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '11px sans-serif';
+            for (let i = 0; i <= numIters; i++) {
+                ctx.fillText(i, toCanvasX(i) - 3, h - margin.bottom + 20);
+            }
+            ctx.fillText('Iteration', w / 2 - 25, h - 5);
+
+            ctx.save();
+            ctx.translate(15, h / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('σ value', 0, 0);
+            ctx.restore();
+
+            ctx.fillStyle = '#3fb950';
+            ctx.fillText('target = 1', w - margin.right - 50, toCanvasY(1) - 5);
+
+            // Update iteration display
+            const iterDisplay = document.getElementById('iter-display');
+            iterDisplay.innerHTML = values.map((v, i) => `
+                <div class="iter-box ${Math.abs(v - 1) < 0.01 ? 'active' : ''}">
+                    <div class="iter-num">k=${i}</div>
+                    <div class="iter-val">${v.toFixed(3)}</div>
+                </div>
+            `).join('');
+
+            // Update table
+            const tableBody = document.getElementById('table-body');
+            tableBody.innerHTML = values.map((v, i) => {
+                const err = Math.abs(v - 1);
+                const prevErr = i > 0 ? Math.abs(values[i - 1] - 1) : null;
+                const rate = prevErr && prevErr > 0.001 ? (err / (prevErr * prevErr)).toFixed(2) : '—';
+                const converged = err < 0.01;
+                return `
+                    <tr>
+                        <td>${i}</td>
+                        <td class="${converged ? 'converged' : ''}">${v.toFixed(6)}</td>
+                        <td class="${converged ? 'converged' : ''}">${err.toFixed(6)}</td>
+                        <td>${rate}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function draw() {
+            drawPhiFunction();
+            drawConvergence();
+        }
+
+        document.getElementById('sigma0').addEventListener('input', e => {
+            sigma0 = parseFloat(e.target.value);
+            document.getElementById('sigma0-val').textContent = sigma0.toFixed(2);
+            draw();
+        });
+
+        document.getElementById('iters').addEventListener('input', e => {
+            numIters = parseInt(e.target.value);
+            document.getElementById('iters-val').textContent = numIters;
+            draw();
+        });
+
+        draw();
+    </script>
+</body>
+</html>

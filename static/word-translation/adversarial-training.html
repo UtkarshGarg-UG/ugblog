@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Adversarial then Procrustes</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    position: relative; width: 100%; height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  canvas {
+    display: block; width: 100%; max-width: 760px; height: auto;
+    aspect-ratio: 4 / 3;
+  }
+  .phase {
+    position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #786c5b;
+    transition: color 0.5s ease;
+  }
+  .phase.adv { color: #d4895c; }
+  .phase.pro { color: #95b078; }
+
+  /* gauges */
+  .gauges {
+    position: absolute; top: 56px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 28px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 11px; color: #8a7e6d;
+    pointer-events: none;
+  }
+  .gauges .g { display: flex; align-items: baseline; gap: 5px; }
+  .gauges .lbl { color: #5e5648; letter-spacing: 0.04em; }
+  .gauges .val { color: #e8dcc1; font-weight: 600; min-width: 56px; text-align: right; }
+  .gauges .val.warn { color: #c25c4a; }
+  .gauges .val.ok   { color: #95b078; }
+
+  .controls {
+    position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 14px;
+  }
+  .timeline {
+    width: 220px; height: 2px; background: #2a2520; position: relative;
+    border-radius: 2px;
+  }
+  .progress {
+    position: absolute; top: 0; left: 0; height: 100%;
+    background: #786c5b; border-radius: 2px;
+  }
+  .progress.adv { background: #d4895c; }
+  .progress.pro { background: #95b078; }
+  .replay {
+    background: none; border: 1px solid #3a352d; color: #8a7e6d;
+    width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; padding: 0;
+    transition: all 0.2s ease;
+  }
+  .replay:hover { border-color: #82a8c3; color: #82a8c3; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phase" id="phase">initialization</div>
+  <div class="gauges" id="gauges">
+    <div class="g"><span class="lbl">D acc</span><span class="val" id="gAcc">—</span></div>
+    <div class="g"><span class="lbl">‖WX−Y‖</span><span class="val" id="gErr">—</span></div>
+    <div class="g"><span class="lbl">∠W</span><span class="val" id="gAng">—</span></div>
+  </div>
+  <canvas id="cv"></canvas>
+  <div class="controls">
+    <button class="replay" id="replay" title="replay">↻</button>
+    <div class="timeline">
+      <div class="progress" id="progress"></div>
+    </div>
+  </div>
+</div>
+<script>
+const TRUE_THETA = -55 * Math.PI / 180;
+let rngState = 42;
+function srand() { rngState = (rngState * 9301 + 49297) % 233280; return rngState / 233280; }
+function randn() { let u = 1 - srand(), v = srand(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+const N = 70;
+const X = [];
+for (let i = 0; i < N; i++) {
+  const c = srand();
+  if (c < 0.4) X.push([randn()*0.6 + 1.0, randn()*0.30 + 0.4]);
+  else if (c < 0.75) X.push([randn()*0.40 - 0.7, randn()*0.50 + 0.10]);
+  else X.push([randn()*0.30, randn()*0.40 - 0.85]);
+}
+
+function rot(t) { return [[Math.cos(t), -Math.sin(t)], [Math.sin(t), Math.cos(t)]]; }
+function apply(M, p) { return [M[0][0]*p[0] + M[0][1]*p[1], M[1][0]*p[0] + M[1][1]*p[1]]; }
+function mm(A, B) {
+  return [
+    [A[0][0]*B[0][0]+A[0][1]*B[1][0], A[0][0]*B[0][1]+A[0][1]*B[1][1]],
+    [A[1][0]*B[0][0]+A[1][1]*B[1][0], A[1][0]*B[0][1]+A[1][1]*B[1][1]],
+  ];
+}
+
+const Y_clean = X.map(p => apply(rot(TRUE_THETA), p));
+const Y = Y_clean.map(p => [p[0] + (randn()-0)*0.025, p[1] + (randn()-0)*0.025]);
+
+// Pre-compute centroid of Y (target, fixed)
+function centroid(pts) {
+  let sx = 0, sy = 0;
+  for (const p of pts) { sx += p[0]; sy += p[1]; }
+  return [sx / pts.length, sy / pts.length];
+}
+const cY = centroid(Y);
+
+// Phase timeline (seconds).
+// The Procrustes phase is broken into THREE iterations: each iteration rebuilds
+// the synthetic dictionary (from mutual nearest neighbors) and runs one closed-
+// form Procrustes step. Each iteration moves W closer to the truth than the last.
+const T_INIT_END   = 0.9;
+const T_ADV_END    = 5.2;
+const T_PLAT_END   = 6.4;
+const T_PAUSE_END  = 6.7;
+const T_PRO1_END   = 7.5;   // Procrustes iteration 1 (big snap; ~70% of the way)
+const T_REBUILD1_END = 7.9; // dictionary rebuild flicker
+const T_PRO2_END   = 8.6;   // Procrustes iteration 2 (smaller adjust)
+const T_REBUILD2_END = 9.0;
+const T_PRO3_END   = 9.7;   // Procrustes iteration 3 (final settle)
+const T_HOLD_END   = 11.6;
+const T_TOTAL      = T_HOLD_END;
+
+// At each Procrustes iteration, W lands progressively closer to the truth.
+// These offsets are added to TRUE_THETA at the end of each iteration.
+const PRO_OFFSETS = [0.045, 0.012, 0.0]; // ~70%, ~92%, exact
+
+const INIT_ANGLE = 110 * Math.PI / 180;
+const ADV_END_ANGLE_OFFSET = 0.14;
+const ADV_END_PERTURB = 0.045;
+
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+function noisyPerturb(amp) {
+  return [
+    [1 + (Math.random()*2-1)*amp, (Math.random()*2-1)*amp],
+    [(Math.random()*2-1)*amp, 1 + (Math.random()*2-1)*amp],
+  ];
+}
+
+let startTs = 0;
+let advEndW = null;
+let snapFlashStart = -1;
+
+// Helper to interpolate between two W matrices.
+function lerpW(A, B, e) {
+  return [
+    [A[0][0]*(1-e) + B[0][0]*e, A[0][1]*(1-e) + B[0][1]*e],
+    [A[1][0]*(1-e) + B[1][0]*e, A[1][1]*(1-e) + B[1][1]*e],
+  ];
+}
+
+// Track the W at the end of each phase boundary so iterations chain smoothly.
+let proStartW = null;
+
+function getW(t) {
+  if (t < T_INIT_END) return rot(INIT_ANGLE);
+  if (t < T_ADV_END) {
+    const u = (t - T_INIT_END) / (T_ADV_END - T_INIT_END);
+    const eased = easeInOut(u);
+    const baseAngle = INIT_ANGLE + (TRUE_THETA + ADV_END_ANGLE_OFFSET - INIT_ANGLE) * eased;
+    const jitter = 0.10 * (1 - 0.6 * eased) * (Math.random()*2 - 1);
+    const angle = baseAngle + jitter;
+    const perturb = noisyPerturb(ADV_END_PERTURB * (0.5 + 0.5 * eased));
+    return mm(perturb, rot(angle));
+  }
+  if (t < T_PLAT_END) {
+    const jitter = 0.08 * (Math.random()*2 - 1);
+    const angle = TRUE_THETA + ADV_END_ANGLE_OFFSET + jitter;
+    const perturb = noisyPerturb(ADV_END_PERTURB);
+    const W = mm(perturb, rot(angle));
+    advEndW = W;
+    return W;
+  }
+  if (t < T_PAUSE_END) {
+    return advEndW || mm(noisyPerturb(ADV_END_PERTURB), rot(TRUE_THETA + ADV_END_ANGLE_OFFSET));
+  }
+
+  // Procrustes iteration 1: from advEndW toward TRUE_THETA + PRO_OFFSETS[0]
+  if (t < T_PRO1_END) {
+    const u = (t - T_PAUSE_END) / (T_PRO1_END - T_PAUSE_END);
+    const eased = easeOutCubic(u);
+    const A = advEndW || rot(TRUE_THETA + ADV_END_ANGLE_OFFSET);
+    const B = rot(TRUE_THETA + PRO_OFFSETS[0]);
+    if (snapFlashStart < 0) snapFlashStart = T_PAUSE_END;
+    const W = lerpW(A, B, eased);
+    proStartW = B; // landing point becomes start for next iter
+    return W;
+  }
+  // Rebuild 1: hold while the dictionary is rebuilt (tiny jitter to suggest activity)
+  if (t < T_REBUILD1_END) {
+    const j = 0.012 * (Math.random()*2 - 1);
+    return mm(noisyPerturb(0.008), rot(TRUE_THETA + PRO_OFFSETS[0] + j));
+  }
+  // Procrustes iteration 2
+  if (t < T_PRO2_END) {
+    const u = (t - T_REBUILD1_END) / (T_PRO2_END - T_REBUILD1_END);
+    const eased = easeOutCubic(u);
+    const A = rot(TRUE_THETA + PRO_OFFSETS[0]);
+    const B = rot(TRUE_THETA + PRO_OFFSETS[1]);
+    return lerpW(A, B, eased);
+  }
+  if (t < T_REBUILD2_END) {
+    const j = 0.006 * (Math.random()*2 - 1);
+    return mm(noisyPerturb(0.005), rot(TRUE_THETA + PRO_OFFSETS[1] + j));
+  }
+  // Procrustes iteration 3 (final settle)
+  if (t < T_PRO3_END) {
+    const u = (t - T_REBUILD2_END) / (T_PRO3_END - T_REBUILD2_END);
+    const eased = easeOutCubic(u);
+    const A = rot(TRUE_THETA + PRO_OFFSETS[1]);
+    const B = rot(TRUE_THETA + PRO_OFFSETS[2]);
+    return lerpW(A, B, eased);
+  }
+  return rot(TRUE_THETA);
+}
+
+function getPhase(t) {
+  if (t < T_INIT_END)    return { label: 'initialization', cls: '' };
+  if (t < T_ADV_END)     return { label: 'adversarial training', cls: 'adv' };
+  if (t < T_PLAT_END)    return { label: 'plateau · stuck on jitter', cls: 'adv' };
+  if (t < T_PAUSE_END)   return { label: 'plateau · stuck on jitter', cls: 'adv' };
+  if (t < T_PRO1_END)    return { label: 'procrustes · iteration 1', cls: 'pro' };
+  if (t < T_REBUILD1_END) return { label: 'rebuild dictionary (mutual NN)', cls: 'pro' };
+  if (t < T_PRO2_END)    return { label: 'procrustes · iteration 2', cls: 'pro' };
+  if (t < T_REBUILD2_END) return { label: 'rebuild dictionary (mutual NN)', cls: 'pro' };
+  if (t < T_PRO3_END)    return { label: 'procrustes · iteration 3', cls: 'pro' };
+  return { label: 'aligned · W = U Vᵀ', cls: 'pro' };
+}
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const phaseEl = document.getElementById('phase');
+const progressEl = document.getElementById('progress');
+const replay = document.getElementById('replay');
+const gAcc = document.getElementById('gAcc');
+const gErr = document.getElementById('gErr');
+const gAng = document.getElementById('gAng');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function normalizeAngleDeg(rad) {
+  let a = rad * 180 / Math.PI;
+  while (a > 180) a -= 360;
+  while (a < -180) a += 360;
+  return a;
+}
+
+function draw(t) {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w/2, cy = h/2, scale = Math.min(w, h) * 0.22;
+
+  const W = getW(t);
+  const WX = X.map(p => apply(W, p));
+
+  // Compute centroids and metrics for gauges + boundary
+  const cWX = centroid(WX);
+  const cdx = cY[0] - cWX[0], cdy = cY[1] - cWX[1];
+  const cDist = Math.sqrt(cdx * cdx + cdy * cdy);
+
+  let err = 0;
+  for (let i = 0; i < WX.length; i++) {
+    const dx = WX[i][0] - Y[i][0], dy = WX[i][1] - Y[i][1];
+    err += dx*dx + dy*dy;
+  }
+  err = Math.sqrt(err / WX.length);
+  const angDeg = normalizeAngleDeg(Math.atan2(W[1][0], W[0][0]));
+  // D accuracy estimate: 0.5 (chance) → 0.95 (clearly distinguishable), based on centroid sep
+  const dAcc = 0.50 + 0.45 * Math.min(1, cDist / 1.6);
+
+  const aligned = t > T_PRO3_END;
+  // Each iteration's flash boundary (start, end), used for the snap-flash effect
+  const proPhases = [
+    { start: T_PAUSE_END,    end: T_PRO1_END },
+    { start: T_REBUILD1_END, end: T_PRO2_END },
+    { start: T_REBUILD2_END, end: T_PRO3_END },
+  ];
+
+  // ============== Discriminator visualization ==============
+  // Side-tinted background: caramel on WX side, sage on Y side, fading as they converge.
+  if (cDist > 0.04) {
+    const cWXpx = [cx + cWX[0] * scale, cy - cWX[1] * scale];
+    const cYpx  = [cx + cY[0]  * scale, cy - cY[1]  * scale];
+    const tintAlpha = Math.min(0.12, 0.12 * cDist / 1.5);
+    const grad = ctx.createLinearGradient(cWXpx[0], cWXpx[1], cYpx[0], cYpx[1]);
+    grad.addColorStop(0,    `rgba(212, 137, 92, ${tintAlpha})`);
+    grad.addColorStop(0.45, 'rgba(212, 137, 92, 0)');
+    grad.addColorStop(0.55, 'rgba(149, 176, 120, 0)');
+    grad.addColorStop(1,    `rgba(149, 176, 120, ${tintAlpha})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Decision boundary line: perpendicular bisector of the two centroids
+    const mx = (cWXpx[0] + cYpx[0]) / 2, my = (cWXpx[1] + cYpx[1]) / 2;
+    const dx = cYpx[0] - cWXpx[0], dy = cYpx[1] - cWXpx[1];
+    const dlen = Math.sqrt(dx * dx + dy * dy) + 1e-9;
+    const perpX = -dy / dlen, perpY = dx / dlen;
+    const extend = Math.max(w, h);
+    const lineAlpha = Math.min(0.55, cDist * 0.45);
+    ctx.strokeStyle = `rgba(200, 168, 56, ${lineAlpha})`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(mx - perpX * extend, my - perpY * extend);
+    ctx.lineTo(mx + perpX * extend, my + perpY * extend);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Tiny "D" label near the midpoint
+    if (cDist > 0.25 && !aligned) {
+      ctx.fillStyle = `rgba(200, 168, 56, ${Math.min(0.85, lineAlpha + 0.2)})`;
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const tagX = mx + perpX * 12 + dx / dlen * 8;
+      const tagY = my + perpY * 12 + dy / dlen * 8;
+      ctx.fillText('D', tagX, tagY);
+    }
+  }
+
+  // ============== Residual lines (WX_i → Y_i) ==============
+  let resOpacity = 0;
+  if (t > T_INIT_END && t < T_PAUSE_END) resOpacity = 0.5;
+  else if (t >= T_PAUSE_END && t < T_PRO3_END) {
+    // residuals shrink across the iterations, with the final iteration killing them
+    const u = (t - T_PAUSE_END) / (T_PRO3_END - T_PAUSE_END);
+    resOpacity = 0.45 * (1 - easeOutCubic(u));
+  }
+  if (resOpacity > 0.001) {
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgba(212, 137, 92, ${resOpacity * 0.55})`;
+    for (let i = 0; i < WX.length; i++) {
+      const a = WX[i], b = Y[i];
+      ctx.beginPath();
+      ctx.moveTo(cx + a[0]*scale, cy - a[1]*scale);
+      ctx.lineTo(cx + b[0]*scale, cy - b[1]*scale);
+      ctx.stroke();
+    }
+  }
+
+  // ============== Procrustes snap flash (once per iteration) ==============
+  for (const ph of proPhases) {
+    if (t > ph.start && t < ph.end) {
+      const u = (t - ph.start) / (ph.end - ph.start);
+      const flash = 0.30 * (1 - easeOutCubic(u));
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, h) * 0.5);
+      g.addColorStop(0, `rgba(149, 176, 120, ${flash})`);
+      g.addColorStop(1, 'rgba(149, 176, 120, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+  // ============== Target Y points (green) ==============
+  ctx.fillStyle = aligned ? 'rgba(149, 176, 120, 0.95)' : 'rgba(149, 176, 120, 0.5)';
+  for (const p of Y) {
+    ctx.beginPath();
+    ctx.arc(cx + p[0]*scale, cy - p[1]*scale, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ============== WX points (warm) ==============
+  ctx.fillStyle = aligned ? 'rgba(216, 188, 132, 0.95)' : 'rgba(212, 137, 92, 0.92)';
+  for (const p of WX) {
+    ctx.beginPath();
+    ctx.arc(cx + p[0]*scale, cy - p[1]*scale, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ============== Centroid markers (small) ==============
+  if (cDist > 0.04 && !aligned) {
+    const cWXpx = [cx + cWX[0] * scale, cy - cWX[1] * scale];
+    const cYpx  = [cx + cY[0]  * scale, cy - cY[1]  * scale];
+    ctx.strokeStyle = 'rgba(212, 137, 92, 0.7)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cWXpx[0], cWXpx[1], 8, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(149, 176, 120, 0.7)';
+    ctx.beginPath(); ctx.arc(cYpx[0], cYpx[1], 8, 0, Math.PI*2); ctx.stroke();
+  }
+
+  // ============== Aligned glow ==============
+  if (aligned) {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, h) * 0.42);
+    g.addColorStop(0, 'rgba(149, 176, 120, 0.10)');
+    g.addColorStop(1, 'rgba(149, 176, 120, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // ============== Update gauges ==============
+  gAcc.textContent = (dAcc * 100).toFixed(0) + '%';
+  gAcc.className = 'val' + (dAcc < 0.55 ? ' ok' : (dAcc > 0.85 ? ' warn' : ''));
+  gErr.textContent = err.toFixed(3);
+  gErr.className = 'val' + (err < 0.05 ? ' ok' : (err > 0.4 ? ' warn' : ''));
+  gAng.textContent = (angDeg >= 0 ? '+' : '') + angDeg.toFixed(0) + '°';
+  gAng.className = 'val';
+}
+
+function setPhase(p) {
+  phaseEl.textContent = p.label;
+  phaseEl.className = 'phase ' + p.cls;
+  progressEl.className = 'progress ' + p.cls;
+}
+
+let rafId = 0;
+function loop(ts) {
+  if (!startTs) startTs = ts;
+  const t = (ts - startTs) / 1000;
+  const tClamped = Math.min(t, T_TOTAL);
+  draw(tClamped);
+  setPhase(getPhase(tClamped));
+  progressEl.style.width = (100 * tClamped / T_TOTAL).toFixed(2) + '%';
+  if (t < T_TOTAL + 1.2) rafId = requestAnimationFrame(loop);
+}
+
+function start() {
+  cancelAnimationFrame(rafId);
+  startTs = 0;
+  advEndW = null;
+  snapFlashStart = -1;
+  rngState = 42;
+  rafId = requestAnimationFrame(loop);
+}
+
+replay.addEventListener('click', start);
+window.addEventListener('resize', () => { fit(); });
+
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') start();
+});
+
+fit();
+start();
+</script>
+</body>
+</html>

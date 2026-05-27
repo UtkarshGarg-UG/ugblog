@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The whole pipeline</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px; box-sizing: border-box;
+  }
+  canvas { display: block; width: 100%; max-width: 620px; height: auto; aspect-ratio: 1 / 1; }
+  .hint {
+    position: absolute; top: 22px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase;
+    color: #786c5b; transition: color 0.5s ease;
+  }
+  .hint.s1 { color: #82a8c3; }
+  .hint.s2 { color: #d4895c; }
+  .hint.s3 { color: #c8a838; }
+  .hint.s4 { color: #95b078; }
+  .replay {
+    position: absolute; top: 14px; right: 14px;
+    background: none; border: 1px solid #3a352d; color: #8a7e6d;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; padding: 0; cursor: pointer; z-index: 10;
+    transition: all 0.2s ease;
+  }
+  .replay:hover { border-color: #82a8c3; color: #82a8c3; }
+  .footer {
+    position: absolute; bottom: 22px; left: 0; right: 0;
+    text-align: center;
+    color: #5e5648; font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    letter-spacing: 0.04em;
+  }
+  .footer .em { color: #8a7e6d; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="hint s1" id="hint">two languages, two embedding spaces</div>
+  <button class="replay" id="replay" title="replay">↻</button>
+  <canvas id="cv"></canvas>
+  <div class="footer">
+    <span class="em">word2vec</span> 2013 &nbsp;·&nbsp;
+    <span class="em">GAN</span> 2014 &nbsp;·&nbsp;
+    <span class="em">SVD / Procrustes</span> 1966 &nbsp;·&nbsp;
+    <span class="em">distributional</span> 1957
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const hint = document.getElementById('hint');
+const replay = document.getElementById('replay');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+const PAL = {
+  cream: '#e8dcc1', muted: '#8a7e6d', faint: '#5e5648',
+  blue: '#82a8c3', caramel: '#d4895c', gold: '#c8a838',
+  sage: '#95b078', rust: '#c25c4a',
+};
+
+// Reproducible RNG
+let rng = 17;
+function srand() { rng = (rng * 9301 + 49297) % 233280; return rng / 233280; }
+function randn() { let u = 1 - srand(), v = srand(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// Word pairs that materialize as the result.
+const PAIRS = [
+  { en: 'cat',   it: 'gatto',  x: -0.85, y:  0.75 },
+  { en: 'king',  it: 're',     x:  0.85, y:  0.75 },
+  { en: 'water', it: 'acqua',  x: -1.15, y:  0.00 },
+  { en: 'three', it: 'tre',    x:  1.15, y:  0.00 },
+  { en: 'red',   it: 'rosso',  x: -0.85, y: -0.75 },
+  { en: 'queen', it: 'regina', x:  0.85, y: -0.75 },
+];
+
+// Background filler dots for the embedding cloud (semantic texture).
+const FILL = [];
+for (let i = 0; i < 50; i++) {
+  FILL.push([randn() * 0.85, randn() * 0.85]);
+}
+
+// Phase timeline (seconds).
+const T_TWO   = 2.0;   // two distinct clouds appear, side by side
+const T_DRIFT = 2.2;   // they drift to overlap (warm rotates into green)
+const T_SNAP  = 1.4;   // procrustes snap into precise alignment
+const T_REVEAL = 3.5;  // word pairs materialize from the aligned cloud
+const T_HOLD  = 3.0;
+const T_LOOP  = T_TWO + T_DRIFT + T_SNAP + T_REVEAL + T_HOLD;
+
+let t0 = performance.now();
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2; }
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function withA(hex, a) { return hex + Math.round(a * 255).toString(16).padStart(2, '0'); }
+function rot(t) { return [[Math.cos(t), -Math.sin(t)], [Math.sin(t), Math.cos(t)]]; }
+function apply(M, p) { return [M[0][0]*p[0] + M[0][1]*p[1], M[1][0]*p[0] + M[1][1]*p[1]]; }
+
+function phaseInfo(t) {
+  if (t < T_TWO) return { name: 'two', local: t / T_TWO };
+  if (t < T_TWO + T_DRIFT) return { name: 'drift', local: (t - T_TWO) / T_DRIFT };
+  if (t < T_TWO + T_DRIFT + T_SNAP) return { name: 'snap', local: (t - T_TWO - T_DRIFT) / T_SNAP };
+  if (t < T_TWO + T_DRIFT + T_SNAP + T_REVEAL) return { name: 'reveal', local: (t - T_TWO - T_DRIFT - T_SNAP) / T_REVEAL };
+  return { name: 'hold', local: 1 };
+}
+
+const INIT_THETA = 55 * Math.PI / 180;
+const RESIDUAL_THETA = 0.18; // residual after GAN, before Procrustes snap
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const scale = Math.min(w, h) * 0.18;
+
+  const tNow = (performance.now() - t0) / 1000;
+  const t = tNow % T_LOOP;
+  const { name, local } = phaseInfo(t);
+
+  // Decide the offset and rotation of the warm cloud relative to the green cloud.
+  let warmOffsetX, warmOffsetY, warmTheta;
+  if (name === 'two') {
+    // Two clouds side by side, separated horizontally.
+    warmOffsetX = -2.3;
+    warmOffsetY = 0;
+    warmTheta = INIT_THETA;
+  } else if (name === 'drift') {
+    const u = easeInOut(local);
+    warmOffsetX = -2.3 + 2.3 * u;
+    warmOffsetY = 0;
+    warmTheta = INIT_THETA + (RESIDUAL_THETA - INIT_THETA) * u;
+  } else if (name === 'snap') {
+    const u = easeOutCubic(local);
+    warmOffsetX = 0;
+    warmOffsetY = 0;
+    warmTheta = RESIDUAL_THETA + (0 - RESIDUAL_THETA) * u;
+  } else {
+    warmOffsetX = 0;
+    warmOffsetY = 0;
+    warmTheta = 0;
+  }
+
+  // Helper: render a cloud at (cx + offset*scale, cy) with rotation theta and color.
+  function drawCloud(points, ox, oy, theta, color, alpha) {
+    ctx.fillStyle = withA(color, alpha);
+    for (const p of points) {
+      const rp = apply(rot(theta), p);
+      const px = cx + (rp[0] + ox) * scale;
+      const py = cy - (rp[1] + oy) * scale;
+      ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Green (target / Italian) cloud at center, no offset, no extra rotation.
+  drawCloud(FILL, 0, 0, 0, PAL.sage, name === 'reveal' || name === 'hold' ? 0.55 : 0.7);
+  // Warm (source / English) cloud: drifts and rotates.
+  drawCloud(FILL, warmOffsetX, warmOffsetY, warmTheta, PAL.caramel, name === 'reveal' || name === 'hold' ? 0.55 : 0.85);
+
+  // Once snapped, also draw the labeled pair points.
+  if (name === 'reveal' || name === 'hold') {
+    let baseAlpha = name === 'reveal' ? easeOutCubic(local) : 1;
+
+    // Halo around the aligned cluster
+    const haloG = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 5.5);
+    haloG.addColorStop(0, withA(PAL.sage, 0.12 * baseAlpha));
+    haloG.addColorStop(1, withA(PAL.sage, 0));
+    ctx.fillStyle = haloG;
+    ctx.fillRect(0, 0, w, h);
+
+    // Labeled pair dots arranged around the cluster center
+    for (let i = 0; i < PAIRS.length; i++) {
+      const p = PAIRS[i];
+      const pairAlpha = name === 'reveal'
+        ? Math.max(0, Math.min(1, (local - i * 0.08) / 0.4))
+        : 1;
+      const px = cx + p.x * scale * 2.0;
+      const py = cy - p.y * scale * 2.0;
+
+      // Two small dots (warm + sage) sitting together
+      ctx.fillStyle = withA(PAL.caramel, pairAlpha);
+      ctx.beginPath(); ctx.arc(px - 3, py, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = withA(PAL.sage, pairAlpha);
+      ctx.beginPath(); ctx.arc(px + 3, py, 3, 0, Math.PI * 2); ctx.fill();
+
+      // English label above, Italian below
+      ctx.fillStyle = withA(PAL.cream, pairAlpha);
+      ctx.font = '600 13px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(p.en, px, py - 11);
+      ctx.fillStyle = withA(PAL.sage, pairAlpha);
+      ctx.fillText(p.it, px, py + 19);
+    }
+
+    // Central label: "translation"
+    ctx.fillStyle = withA(PAL.cream, baseAlpha);
+    ctx.font = '700 16px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('translation', cx, cy - 8);
+    ctx.fillStyle = withA(PAL.muted, baseAlpha);
+    ctx.font = '10px ui-monospace, monospace';
+    ctx.fillText('without parallel data', cx, cy + 10);
+  }
+
+  // Hint label per phase
+  let hintText = '', cls = '';
+  if (name === 'two')     { hintText = 'two languages · two embedding spaces';        cls = 's1'; }
+  else if (name === 'drift') { hintText = 'GAN nudges them into rough alignment';      cls = 's2'; }
+  else if (name === 'snap')  { hintText = 'Procrustes (iterated) lands the rotation';  cls = 's3'; }
+  else                       { hintText = 'translation without parallel data';         cls = 's4'; }
+  if (hint.textContent !== hintText) hint.textContent = hintText;
+  hint.className = 'hint ' + cls;
+}
+
+function loop() { draw(); requestAnimationFrame(loop); }
+
+replay.addEventListener('click', () => { t0 = performance.now(); });
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') t0 = performance.now();
+});
+
+fit();
+window.addEventListener('resize', fit);
+loop();
+</script>
+</body>
+</html>

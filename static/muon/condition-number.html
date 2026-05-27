@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Condition Number Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #58a6ff;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 25px;
+        }
+
+        .main-viz {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .viz-panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .viz-panel h3 {
+            color: #8b949e;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        canvas {
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .condition-display {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            min-width: 200px;
+        }
+
+        .kappa-value {
+            font-size: 3rem;
+            font-weight: bold;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .kappa-label {
+            color: #8b949e;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        .sigma-display {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #30363d;
+        }
+
+        .sigma-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+        }
+
+        .sigma-label {
+            color: #8b949e;
+        }
+
+        .sigma-val {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #f0883e;
+        }
+
+        .controls {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            color: #8b949e;
+            min-width: 180px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            min-width: 60px;
+        }
+
+        .severity {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-top: 15px;
+            display: inline-block;
+        }
+
+        .severity.good {
+            background: rgba(63, 185, 80, 0.2);
+            color: #3fb950;
+        }
+
+        .severity.moderate {
+            background: rgba(240, 136, 62, 0.2);
+            color: #f0883e;
+        }
+
+        .severity.bad {
+            background: rgba(248, 81, 73, 0.2);
+            color: #f85149;
+        }
+
+        .bar-chart {
+            margin-top: 20px;
+        }
+
+        .bar-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .bar-label {
+            width: 30px;
+            color: #8b949e;
+            font-size: 0.85rem;
+        }
+
+        .bar-bg {
+            flex: 1;
+            height: 24px;
+            background: #21262d;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        .bar-fill.s1 {
+            background: linear-gradient(90deg, #3fb950, #56d364);
+        }
+
+        .bar-fill.s2 {
+            background: linear-gradient(90deg, #f85149, #ff7b72);
+        }
+
+        .explanation {
+            background: rgba(56, 139, 253, 0.1);
+            border: 1px solid rgba(56, 139, 253, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .explanation strong {
+            color: #58a6ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Understanding Condition Number</h2>
+        <p class="subtitle">κ = σ<sub>max</sub> / σ<sub>min</sub> — How unevenly a matrix stretches space</p>
+
+        <div class="main-viz">
+            <div class="viz-panel">
+                <h3>Unit Circle → Ellipse</h3>
+                <canvas id="canvas" width="300" height="300"></canvas>
+
+                <div class="bar-chart">
+                    <div class="bar-container">
+                        <span class="bar-label">σ₁</span>
+                        <div class="bar-bg">
+                            <div class="bar-fill s1" id="bar1" style="width: 66%"></div>
+                        </div>
+                    </div>
+                    <div class="bar-container">
+                        <span class="bar-label">σ₂</span>
+                        <div class="bar-bg">
+                            <div class="bar-fill s2" id="bar2" style="width: 33%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="condition-display">
+                <div class="kappa-value" id="kappa">2.0</div>
+                <div class="kappa-label">Condition Number (κ)</div>
+
+                <div class="sigma-display">
+                    <div class="sigma-row">
+                        <span class="sigma-label">σ₁ (max stretch)</span>
+                        <span class="sigma-val" id="s1-display">2.0</span>
+                    </div>
+                    <div class="sigma-row">
+                        <span class="sigma-label">σ₂ (min stretch)</span>
+                        <span class="sigma-val" id="s2-display">1.0</span>
+                    </div>
+                </div>
+
+                <div class="severity good" id="severity">Well-conditioned</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <label>σ₁ (largest singular value):</label>
+                <input type="range" id="s1" min="0.5" max="5" step="0.1" value="2">
+                <span class="value" id="s1-val">2.0</span>
+            </div>
+
+            <div class="control-row">
+                <label>σ₂ (smallest singular value):</label>
+                <input type="range" id="s2" min="0.1" max="3" step="0.1" value="1">
+                <span class="value" id="s2-val">1.0</span>
+            </div>
+        </div>
+
+        <div class="explanation" id="explanation">
+            <strong>κ = 2.0:</strong> The matrix stretches space 2× more in one direction than another.
+            Gradient descent can handle this reasonably well with a carefully chosen learning rate.
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let s1 = 2, s2 = 1;
+
+        function draw() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const scale = 45;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Draw grid
+            ctx.strokeStyle = '#21262d';
+            ctx.lineWidth = 1;
+            for (let i = -3; i <= 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(cx + i * scale, 0);
+                ctx.lineTo(cx + i * scale, h);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(0, cy + i * scale);
+                ctx.lineTo(w, cy + i * scale);
+                ctx.stroke();
+            }
+
+            // Draw axes
+            ctx.strokeStyle = '#484f58';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, cy);
+            ctx.lineTo(w, cy);
+            ctx.moveTo(cx, 0);
+            ctx.lineTo(cx, h);
+            ctx.stroke();
+
+            // Draw unit circle (dashed)
+            ctx.strokeStyle = '#484f58';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.arc(cx, cy, scale, 0, 2 * Math.PI);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw ellipse (transformed circle)
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let theta = 0; theta <= 2 * Math.PI + 0.1; theta += 0.05) {
+                const x = s1 * Math.cos(theta) * scale;
+                const y = s2 * Math.sin(theta) * scale;
+                if (theta === 0) ctx.moveTo(cx + x, cy - y);
+                else ctx.lineTo(cx + x, cy - y);
+            }
+            ctx.stroke();
+
+            // Draw σ₁ arrow (horizontal)
+            ctx.strokeStyle = '#3fb950';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + s1 * scale, cy);
+            ctx.stroke();
+
+            // Arrow head
+            ctx.beginPath();
+            ctx.moveTo(cx + s1 * scale, cy);
+            ctx.lineTo(cx + s1 * scale - 8, cy - 5);
+            ctx.lineTo(cx + s1 * scale - 8, cy + 5);
+            ctx.closePath();
+            ctx.fillStyle = '#3fb950';
+            ctx.fill();
+
+            // Label
+            ctx.fillStyle = '#3fb950';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.fillText('σ₁', cx + s1 * scale / 2, cy - 10);
+
+            // Draw σ₂ arrow (vertical)
+            ctx.strokeStyle = '#f85149';
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx, cy - s2 * scale);
+            ctx.stroke();
+
+            // Arrow head
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - s2 * scale);
+            ctx.lineTo(cx - 5, cy - s2 * scale + 8);
+            ctx.lineTo(cx + 5, cy - s2 * scale + 8);
+            ctx.closePath();
+            ctx.fillStyle = '#f85149';
+            ctx.fill();
+
+            // Label
+            ctx.fillStyle = '#f85149';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.fillText('σ₂', cx + 10, cy - s2 * scale / 2);
+
+            // Update displays
+            const kappa = s1 / s2;
+            document.getElementById('kappa').textContent = kappa.toFixed(1);
+            document.getElementById('s1-display').textContent = s1.toFixed(1);
+            document.getElementById('s2-display').textContent = s2.toFixed(1);
+
+            // Update bars
+            const maxS = 5;
+            document.getElementById('bar1').style.width = (s1 / maxS * 100) + '%';
+            document.getElementById('bar2').style.width = (s2 / maxS * 100) + '%';
+
+            // Update severity
+            const severity = document.getElementById('severity');
+            if (kappa < 3) {
+                severity.className = 'severity good';
+                severity.textContent = 'Well-conditioned';
+            } else if (kappa < 10) {
+                severity.className = 'severity moderate';
+                severity.textContent = 'Moderate';
+            } else {
+                severity.className = 'severity bad';
+                severity.textContent = 'Ill-conditioned';
+            }
+
+            // Update explanation
+            const explanation = document.getElementById('explanation');
+            if (kappa < 3) {
+                explanation.innerHTML = `<strong>κ = ${kappa.toFixed(1)}:</strong> The matrix stretches space fairly uniformly. Gradient descent works well here — a single learning rate can handle all directions.`;
+            } else if (kappa < 10) {
+                explanation.innerHTML = `<strong>κ = ${kappa.toFixed(1)}:</strong> Moderate stretching disparity. Gradient descent will oscillate somewhat in the σ₁ direction while crawling in the σ₂ direction. Momentum helps.`;
+            } else {
+                explanation.innerHTML = `<strong>κ = ${kappa.toFixed(1)}:</strong> Severe ill-conditioning! Any learning rate that makes progress in the flat direction will cause violent oscillations in the steep direction. This is exactly why we need orthogonalization!`;
+            }
+        }
+
+        document.getElementById('s1').addEventListener('input', e => {
+            s1 = parseFloat(e.target.value);
+            document.getElementById('s1-val').textContent = s1.toFixed(1);
+            // Ensure s1 >= s2
+            if (s1 < s2) {
+                s2 = s1;
+                document.getElementById('s2').value = s2;
+                document.getElementById('s2-val').textContent = s2.toFixed(1);
+            }
+            draw();
+        });
+
+        document.getElementById('s2').addEventListener('input', e => {
+            s2 = parseFloat(e.target.value);
+            document.getElementById('s2-val').textContent = s2.toFixed(1);
+            // Ensure s2 <= s1
+            if (s2 > s1) {
+                s1 = s2;
+                document.getElementById('s1').value = s1;
+                document.getElementById('s1-val').textContent = s1.toFixed(1);
+            }
+            draw();
+        });
+
+        draw();
+    </script>
+</body>
+</html>

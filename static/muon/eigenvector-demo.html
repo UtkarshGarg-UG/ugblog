@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eigenvector Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 8px;
+            color: #58a6ff;
+            font-size: 1.3rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        .main-content {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .viz-panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .info-panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px;
+            min-width: 250px;
+        }
+
+        .matrix-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .matrix-box h4 {
+            color: #8b949e;
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+        }
+
+        .matrix-display {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1rem;
+            color: #58a6ff;
+        }
+
+        .eigen-info {
+            margin-top: 15px;
+        }
+
+        .eigen-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            background: #0d1117;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .eigen-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .eigen-text {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+        }
+
+        .result-box {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+
+        .result-box.eigenvector {
+            background: rgba(63, 185, 80, 0.1);
+            border: 1px solid rgba(63, 185, 80, 0.4);
+        }
+
+        .result-box.not-eigenvector {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid rgba(248, 81, 73, 0.4);
+        }
+
+        .controls {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            color: #8b949e;
+            font-size: 0.85rem;
+            min-width: 100px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            min-width: 50px;
+            text-align: right;
+            font-size: 0.85rem;
+        }
+
+        .explanation {
+            background: rgba(56, 139, 253, 0.1);
+            border: 1px solid rgba(56, 139, 253, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        .snap-btn {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #8b949e;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin-right: 8px;
+            margin-top: 10px;
+        }
+
+        .snap-btn:hover {
+            background: #30363d;
+            color: #e6edf3;
+        }
+
+        .snap-btn.v1 {
+            border-color: rgba(63, 185, 80, 0.5);
+        }
+
+        .snap-btn.v2 {
+            border-color: rgba(240, 136, 62, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Eigenvectors: Directions That Only Get Stretched</h2>
+        <p class="subtitle">Drag the vector around. When it aligns with an eigenvector, it only stretches — no rotation!</p>
+
+        <div class="main-content">
+            <div class="viz-panel">
+                <canvas id="canvas" width="350" height="350"></canvas>
+            </div>
+
+            <div class="info-panel">
+                <div class="matrix-box">
+                    <h4>Matrix A</h4>
+                    <div class="matrix-display">[2, 0; 0, 3]</div>
+                </div>
+
+                <div class="eigen-info">
+                    <div class="eigen-row">
+                        <div class="eigen-color" style="background: #3fb950;"></div>
+                        <div class="eigen-text">v₁ = (1, 0), λ₁ = 2</div>
+                    </div>
+                    <div class="eigen-row">
+                        <div class="eigen-color" style="background: #f0883e;"></div>
+                        <div class="eigen-text">v₂ = (0, 1), λ₂ = 3</div>
+                    </div>
+                </div>
+
+                <div class="result-box" id="result-box">
+                    <div id="result-text">Drag the blue vector!</div>
+                </div>
+
+                <div>
+                    <button class="snap-btn v1" onclick="snapToEigen(0)">Snap to v₁ (x-axis)</button>
+                    <button class="snap-btn v2" onclick="snapToEigen(1)">Snap to v₂ (y-axis)</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <label>Vector angle:</label>
+                <input type="range" id="angle" min="0" max="360" step="1" value="30">
+                <span class="value" id="angle-val">30°</span>
+            </div>
+        </div>
+
+        <div class="explanation">
+            <strong>The blue vector</strong> is your input x. <strong>The purple vector</strong> is Ax (the output after applying the matrix).
+            <br><br>
+            • <strong>Not an eigenvector:</strong> The output points in a DIFFERENT direction than the input — the matrix both stretches AND rotates.
+            <br><br>
+            • <strong>Eigenvector:</strong> The output points in the SAME direction (or exactly opposite) — the matrix ONLY stretches, by factor λ.
+            <br><br>
+            This diagonal matrix stretches 2× along x-axis and 3× along y-axis. So the eigenvectors are the axes themselves!
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Matrix A = [[2, 0], [0, 3]] - simple diagonal matrix
+        // Eigenvalues: λ₁ = 2, λ₂ = 3
+        // Eigenvectors: v₁ = (1, 0), v₂ = (0, 1)
+        const A = [[2, 0], [0, 3]];
+        const lambda1 = 2;
+        const lambda2 = 3;
+
+        // Eigenvectors (along axes for diagonal matrix)
+        const v1 = [1, 0];
+        const v2 = [0, 1];
+
+        const eigenAngles = [0, 90]; // degrees
+
+        let angle = 30;
+
+        function matVec(M, v) {
+            return [
+                M[0][0] * v[0] + M[0][1] * v[1],
+                M[1][0] * v[0] + M[1][1] * v[1]
+            ];
+        }
+
+        function norm(v) {
+            return Math.sqrt(v[0] * v[0] + v[1] * v[1]);
+        }
+
+        function dot(a, b) {
+            return a[0] * b[0] + a[1] * b[1];
+        }
+
+        function draw() {
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            const cx = w / 2;
+            const cy = h / 2;
+            const scale = 45;
+
+            // Grid
+            ctx.strokeStyle = '#21262d';
+            ctx.lineWidth = 1;
+            for (let i = -3; i <= 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(cx + i * scale, 0);
+                ctx.lineTo(cx + i * scale, h);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, cy + i * scale);
+                ctx.lineTo(w, cy + i * scale);
+                ctx.stroke();
+            }
+
+            // Eigenvector directions (the axes - highlighted)
+            // v1 direction (x-axis)
+            ctx.strokeStyle = 'rgba(63, 185, 80, 0.4)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, cy);
+            ctx.lineTo(w, cy);
+            ctx.stroke();
+
+            // v2 direction (y-axis)
+            ctx.strokeStyle = 'rgba(240, 136, 62, 0.4)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx, 0);
+            ctx.lineTo(cx, h);
+            ctx.stroke();
+
+            // Labels for eigenvector axes
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillStyle = '#3fb950';
+            ctx.fillText('v₁ (λ=2)', w - 55, cy - 8);
+            ctx.fillStyle = '#f0883e';
+            ctx.fillText('v₂ (λ=3)', cx + 8, 20);
+
+            // Input vector
+            const rad = angle * Math.PI / 180;
+            const x = [Math.cos(rad), Math.sin(rad)];
+
+            // Output vector Ax
+            const Ax = matVec(A, x);
+
+            // Draw input vector (blue)
+            const inputLen = 1.5 * scale;
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + x[0] * inputLen, cy - x[1] * inputLen);
+            ctx.stroke();
+
+            // Arrowhead for input
+            const inputEndX = cx + x[0] * inputLen;
+            const inputEndY = cy - x[1] * inputLen;
+            drawArrowhead(ctx, cx, cy, inputEndX, inputEndY, '#58a6ff');
+
+            // Draw output vector (purple) - scale it down to fit
+            const outputScale = scale * 0.6;
+            ctx.strokeStyle = '#a371f7';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Ax[0] * outputScale, cy - Ax[1] * outputScale);
+            ctx.stroke();
+
+            // Arrowhead for output
+            const outputEndX = cx + Ax[0] * outputScale;
+            const outputEndY = cy - Ax[1] * outputScale;
+            drawArrowhead(ctx, cx, cy, outputEndX, outputEndY, '#a371f7');
+
+            // Labels
+            ctx.fillStyle = '#58a6ff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.fillText('x', inputEndX + 8, inputEndY - 5);
+
+            ctx.fillStyle = '#a371f7';
+            ctx.fillText('Ax', outputEndX + 8, outputEndY - 5);
+
+            // Check if eigenvector
+            updateResult(x, Ax);
+        }
+
+        function drawArrowhead(ctx, fromX, fromY, toX, toY, color) {
+            const headlen = 10;
+            const dx = toX - fromX;
+            const dy = toY - fromY;
+            const angle = Math.atan2(dy, dx);
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function updateResult(x, Ax) {
+            const resultBox = document.getElementById('result-box');
+            const resultText = document.getElementById('result-text');
+
+            // Check alignment: are x and Ax parallel?
+            // cos(angle between them) = dot(x, Ax) / (|x| |Ax|)
+            const cosAngle = dot(x, Ax) / (norm(x) * norm(Ax));
+            const isEigenvector = Math.abs(Math.abs(cosAngle) - 1) < 0.02;
+
+            // Check which eigenvector we're close to
+            const angleNorm = ((angle % 360) + 360) % 360;
+            const nearV1 = (angleNorm < 5 || angleNorm > 355 || (angleNorm > 175 && angleNorm < 185));
+            const nearV2 = ((angleNorm > 85 && angleNorm < 95) || (angleNorm > 265 && angleNorm < 275));
+
+            if (isEigenvector) {
+                const stretch = norm(Ax) / norm(x);
+                let whichEigen = '';
+                if (nearV1) whichEigen = ' (that\'s v₁!)';
+                else if (nearV2) whichEigen = ' (that\'s v₂!)';
+
+                resultBox.className = 'result-box eigenvector';
+                resultText.innerHTML = `<strong style="color: #3fb950">Eigenvector!${whichEigen}</strong><br>
+                    Ax points same direction as x<br>
+                    Stretch factor λ = ${stretch.toFixed(1)}`;
+            } else {
+                // Calculate angle between input and output
+                const angleBetween = Math.acos(Math.min(1, Math.abs(cosAngle))) * 180 / Math.PI;
+                resultBox.className = 'result-box not-eigenvector';
+                resultText.innerHTML = `<strong style="color: #f85149">Not an eigenvector</strong><br>
+                    Ax is rotated ${angleBetween.toFixed(0)}° from x<br>
+                    Matrix both stretches AND rotates`;
+            }
+        }
+
+        function snapToEigen(idx) {
+            angle = eigenAngles[idx];
+            document.getElementById('angle').value = angle;
+            document.getElementById('angle-val').textContent = angle + '°';
+            draw();
+        }
+
+        document.getElementById('angle').addEventListener('input', e => {
+            angle = parseFloat(e.target.value);
+            document.getElementById('angle-val').textContent = Math.round(angle) + '°';
+            draw();
+        });
+
+        draw();
+    </script>
+</body>
+</html>

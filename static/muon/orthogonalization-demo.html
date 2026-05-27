@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orthogonalization: Finding the Nearest Orthogonal Matrix</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 25px;
+            color: #58a6ff;
+        }
+
+        .flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .panel h3 {
+            color: #8b949e;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+
+        .panel.input h3 {
+            color: #f0883e;
+        }
+
+        .panel.output h3 {
+            color: #3fb950;
+        }
+
+        canvas {
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .arrow {
+            font-size: 2rem;
+            color: #58a6ff;
+        }
+
+        .sv-display {
+            margin-top: 10px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.8rem;
+        }
+
+        .sv-display .label {
+            color: #8b949e;
+        }
+
+        .sv-display .values {
+            color: #f0883e;
+        }
+
+        .sv-display .values.orthogonal {
+            color: #3fb950;
+        }
+
+        .controls {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        label {
+            color: #8b949e;
+            min-width: 60px;
+            font-size: 0.9rem;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            font-size: 0.85rem;
+            min-width: 45px;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .btn-primary {
+            background: #238636;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #30363d;
+            color: #c9d1d9;
+        }
+
+        .matrix-comparison {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .matrix-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .matrix-box h4 {
+            font-size: 0.8rem;
+            color: #8b949e;
+            margin-bottom: 10px;
+        }
+
+        .matrix-box.input h4 {
+            color: #f0883e;
+        }
+
+        .matrix-box.output h4 {
+            color: #3fb950;
+        }
+
+        .matrix-content {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+        }
+
+        .matrix-content .row {
+            margin: 3px 0;
+        }
+
+        .matrix-content .entry {
+            display: inline-block;
+            width: 50px;
+            color: #c9d1d9;
+        }
+
+        .explanation {
+            background: rgba(56, 139, 253, 0.1);
+            border: 1px solid rgba(56, 139, 253, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .explanation strong {
+            color: #58a6ff;
+        }
+
+        .condition-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+
+        .condition-badge.bad {
+            background: rgba(248, 81, 73, 0.2);
+            color: #f85149;
+        }
+
+        .condition-badge.perfect {
+            background: rgba(63, 185, 80, 0.2);
+            color: #3fb950;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Orthogonalization: A → UV<sup>T</sup></h2>
+
+        <div class="flow">
+            <div class="panel input">
+                <h3>Input Matrix A</h3>
+                <canvas id="input" width="200" height="200"></canvas>
+                <div class="sv-display">
+                    <span class="label">σ:</span>
+                    <span class="values" id="sv-input">2.50, 0.50</span>
+                </div>
+                <div class="condition-badge bad" id="cond-input">κ = 5.0</div>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="panel" style="background: transparent; border: none;">
+                <div style="font-family: 'SF Mono', Monaco, monospace; color: #58a6ff;">
+                    <div>A = UΣV<sup>T</sup></div>
+                    <div style="margin: 10px 0;">↓</div>
+                    <div>UV<sup>T</sup></div>
+                    <div style="font-size: 0.75rem; color: #8b949e; margin-top: 5px;">(drop Σ)</div>
+                </div>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="panel output">
+                <h3>Orthogonalized UV<sup>T</sup></h3>
+                <canvas id="output" width="200" height="200"></canvas>
+                <div class="sv-display">
+                    <span class="label">σ:</span>
+                    <span class="values orthogonal">1.00, 1.00</span>
+                </div>
+                <div class="condition-badge perfect">κ = 1.0</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-grid">
+                <div class="control-row">
+                    <label>A[0,0]:</label>
+                    <input type="range" id="a" min="-2" max="2" step="0.1" value="1.5">
+                    <span class="value" id="a-val">1.5</span>
+                </div>
+                <div class="control-row">
+                    <label>A[0,1]:</label>
+                    <input type="range" id="b" min="-2" max="2" step="0.1" value="0.5">
+                    <span class="value" id="b-val">0.5</span>
+                </div>
+                <div class="control-row">
+                    <label>A[1,0]:</label>
+                    <input type="range" id="c" min="-2" max="2" step="0.1" value="0.2">
+                    <span class="value" id="c-val">0.2</span>
+                </div>
+                <div class="control-row">
+                    <label>A[1,1]:</label>
+                    <input type="range" id="d" min="-2" max="2" step="0.1" value="1.8">
+                    <span class="value" id="d-val">1.8</span>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button class="btn-primary" onclick="randomMatrix()">Random Matrix</button>
+                <button class="btn-secondary" onclick="setIllConditioned()">Ill-conditioned</button>
+                <button class="btn-secondary" onclick="setIdentity()">Identity</button>
+            </div>
+        </div>
+
+        <div class="matrix-comparison">
+            <div class="matrix-box input">
+                <h4>Original A</h4>
+                <div class="matrix-content" id="matrix-a">
+                    <div class="row">[<span class="entry">1.50</span><span class="entry">0.50</span>]</div>
+                    <div class="row">[<span class="entry">0.20</span><span class="entry">1.80</span>]</div>
+                </div>
+            </div>
+
+            <div class="matrix-box output">
+                <h4>Orthogonalized UV<sup>T</sup></h4>
+                <div class="matrix-content" id="matrix-uvt">
+                    <div class="row">[<span class="entry">0.00</span><span class="entry">0.00</span>]</div>
+                    <div class="row">[<span class="entry">0.00</span><span class="entry">0.00</span>]</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="explanation">
+            <strong>What's happening:</strong> Orthogonalization keeps the "rotational content" of the matrix (the U and V factors)
+            but discards the "stretching content" (the singular values Σ). The result is the nearest orthogonal matrix to A.
+            <br><br>
+            Notice how the ellipse (transformed unit circle) on the left becomes a perfect circle on the right.
+            <strong>All directions are now treated equally!</strong>
+        </div>
+    </div>
+
+    <script>
+        const inputCanvas = document.getElementById('input');
+        const outputCanvas = document.getElementById('output');
+        const inputCtx = inputCanvas.getContext('2d');
+        const outputCtx = outputCanvas.getContext('2d');
+
+        let A = [[1.5, 0.5], [0.2, 1.8]];
+
+        function computeSVD(M) {
+            // Compute A^T A
+            const ata = [
+                [M[0][0] * M[0][0] + M[1][0] * M[1][0], M[0][0] * M[0][1] + M[1][0] * M[1][1]],
+                [M[0][0] * M[0][1] + M[1][0] * M[1][1], M[0][1] * M[0][1] + M[1][1] * M[1][1]]
+            ];
+
+            // Eigenvalues of A^T A (quadratic formula)
+            const trace = ata[0][0] + ata[1][1];
+            const det = ata[0][0] * ata[1][1] - ata[0][1] * ata[1][0];
+            const disc = Math.sqrt(Math.max(0, trace * trace - 4 * det));
+
+            const lambda1 = (trace + disc) / 2;
+            const lambda2 = (trace - disc) / 2;
+
+            const s1 = Math.sqrt(Math.max(0, lambda1));
+            const s2 = Math.sqrt(Math.max(0, lambda2));
+
+            // Eigenvectors of A^T A (for V)
+            let v1, v2;
+            if (Math.abs(ata[0][1]) > 1e-10) {
+                v1 = [lambda1 - ata[1][1], ata[0][1]];
+                v2 = [lambda2 - ata[1][1], ata[0][1]];
+            } else {
+                v1 = [1, 0];
+                v2 = [0, 1];
+            }
+
+            // Normalize
+            const norm1 = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+            const norm2 = Math.sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+            v1 = [v1[0] / norm1, v1[1] / norm1];
+            v2 = [v2[0] / norm2, v2[1] / norm2];
+
+            const V = [[v1[0], v2[0]], [v1[1], v2[1]]];
+
+            // U = A V Sigma^-1
+            let u1, u2;
+            if (s1 > 1e-10) {
+                u1 = [(M[0][0] * v1[0] + M[0][1] * v1[1]) / s1, (M[1][0] * v1[0] + M[1][1] * v1[1]) / s1];
+            } else {
+                u1 = [1, 0];
+            }
+            if (s2 > 1e-10) {
+                u2 = [(M[0][0] * v2[0] + M[0][1] * v2[1]) / s2, (M[1][0] * v2[0] + M[1][1] * v2[1]) / s2];
+            } else {
+                u2 = [-u1[1], u1[0]]; // Perpendicular
+            }
+
+            const U = [[u1[0], u2[0]], [u1[1], u2[1]]];
+
+            return { U, V, s1, s2 };
+        }
+
+        function matMul(A, B) {
+            return [
+                [A[0][0] * B[0][0] + A[0][1] * B[1][0], A[0][0] * B[0][1] + A[0][1] * B[1][1]],
+                [A[1][0] * B[0][0] + A[1][1] * B[1][0], A[1][0] * B[0][1] + A[1][1] * B[1][1]]
+            ];
+        }
+
+        function transpose(M) {
+            return [[M[0][0], M[1][0]], [M[0][1], M[1][1]]];
+        }
+
+        function applyMatrix(M, x, y) {
+            return [M[0][0] * x + M[0][1] * y, M[1][0] * x + M[1][1] * y];
+        }
+
+        function drawTransformed(ctx, transformFn, color) {
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const scale = 35;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Grid
+            ctx.strokeStyle = '#21262d';
+            ctx.lineWidth = 0.5;
+            for (let i = -3; i <= 3; i++) {
+                ctx.beginPath();
+                for (let t = -3; t <= 3; t += 0.1) {
+                    let [x, y] = transformFn(i, t);
+                    if (t === -3) ctx.moveTo(cx + x * scale, cy - y * scale);
+                    else ctx.lineTo(cx + x * scale, cy - y * scale);
+                }
+                ctx.stroke();
+
+                ctx.beginPath();
+                for (let t = -3; t <= 3; t += 0.1) {
+                    let [x, y] = transformFn(t, i);
+                    if (t === -3) ctx.moveTo(cx + x * scale, cy - y * scale);
+                    else ctx.lineTo(cx + x * scale, cy - y * scale);
+                }
+                ctx.stroke();
+            }
+
+            // Transformed circle
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let theta = 0; theta <= 2 * Math.PI + 0.1; theta += 0.05) {
+                let [x, y] = transformFn(Math.cos(theta), Math.sin(theta));
+                if (theta === 0) ctx.moveTo(cx + x * scale, cy - y * scale);
+                else ctx.lineTo(cx + x * scale, cy - y * scale);
+            }
+            ctx.stroke();
+
+            // Axes
+            ctx.strokeStyle = '#484f58';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, cy);
+            ctx.lineTo(w, cy);
+            ctx.moveTo(cx, 0);
+            ctx.lineTo(cx, h);
+            ctx.stroke();
+        }
+
+        function draw() {
+            const svd = computeSVD(A);
+            const UVT = matMul(svd.U, transpose(svd.V));
+
+            const inputTransform = (x, y) => applyMatrix(A, x, y);
+            const outputTransform = (x, y) => applyMatrix(UVT, x, y);
+
+            drawTransformed(inputCtx, inputTransform, '#f0883e');
+            drawTransformed(outputCtx, outputTransform, '#3fb950');
+
+            // Update displays
+            document.getElementById('sv-input').textContent = `${svd.s1.toFixed(2)}, ${svd.s2.toFixed(2)}`;
+
+            const kappa = svd.s2 > 0.01 ? (svd.s1 / svd.s2).toFixed(1) : '∞';
+            document.getElementById('cond-input').textContent = `κ = ${kappa}`;
+
+            // Update matrix displays
+            const matrixA = document.getElementById('matrix-a');
+            matrixA.innerHTML = `
+                <div class="row">[<span class="entry">${A[0][0].toFixed(2)}</span><span class="entry">${A[0][1].toFixed(2)}</span>]</div>
+                <div class="row">[<span class="entry">${A[1][0].toFixed(2)}</span><span class="entry">${A[1][1].toFixed(2)}</span>]</div>
+            `;
+
+            const matrixUVT = document.getElementById('matrix-uvt');
+            matrixUVT.innerHTML = `
+                <div class="row">[<span class="entry">${UVT[0][0].toFixed(2)}</span><span class="entry">${UVT[0][1].toFixed(2)}</span>]</div>
+                <div class="row">[<span class="entry">${UVT[1][0].toFixed(2)}</span><span class="entry">${UVT[1][1].toFixed(2)}</span>]</div>
+            `;
+        }
+
+        function updateSliders() {
+            document.getElementById('a').value = A[0][0];
+            document.getElementById('b').value = A[0][1];
+            document.getElementById('c').value = A[1][0];
+            document.getElementById('d').value = A[1][1];
+            document.getElementById('a-val').textContent = A[0][0].toFixed(1);
+            document.getElementById('b-val').textContent = A[0][1].toFixed(1);
+            document.getElementById('c-val').textContent = A[1][0].toFixed(1);
+            document.getElementById('d-val').textContent = A[1][1].toFixed(1);
+        }
+
+        function randomMatrix() {
+            A = [
+                [(Math.random() * 3 - 1.5).toFixed(1) * 1, (Math.random() * 3 - 1.5).toFixed(1) * 1],
+                [(Math.random() * 3 - 1.5).toFixed(1) * 1, (Math.random() * 3 - 1.5).toFixed(1) * 1]
+            ];
+            updateSliders();
+            draw();
+        }
+
+        function setIllConditioned() {
+            A = [[2.5, 0], [0, 0.3]];
+            updateSliders();
+            draw();
+        }
+
+        function setIdentity() {
+            A = [[1, 0], [0, 1]];
+            updateSliders();
+            draw();
+        }
+
+        ['a', 'b', 'c', 'd'].forEach((id, idx) => {
+            document.getElementById(id).addEventListener('input', e => {
+                const val = parseFloat(e.target.value);
+                A[Math.floor(idx / 2)][idx % 2] = val;
+                document.getElementById(id + '-val').textContent = val.toFixed(1);
+                draw();
+            });
+        });
+
+        draw();
+    </script>
+</body>
+</html>

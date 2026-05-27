@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Semantic Directions</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px; box-sizing: border-box;
+    position: relative;
+  }
+  .hint {
+    position: absolute; top: 22px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase;
+    color: #786c5b; transition: color 0.5s ease;
+    pointer-events: none;
+  }
+  canvas { display: block; width: 100%; max-width: 600px; height: auto; aspect-ratio: 1 / 1; }
+  .nav {
+    position: absolute; bottom: 22px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 8px;
+  }
+  .nav .pip {
+    width: 26px; height: 3px; border-radius: 2px;
+    background: rgba(138, 126, 109,0.25);
+    transition: background 0.4s ease;
+  }
+  .nav .pip.active { background: currentColor; }
+  .replay {
+    position: absolute; top: 14px; right: 14px;
+    background: none; border: 1px solid #3a352d; color: #8a7e6d;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; padding: 0; cursor: pointer; z-index: 10;
+    transition: all 0.2s ease;
+  }
+  .replay:hover { border-color: #82a8c3; color: #82a8c3; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="hint" id="hint">meaning has axes</div>
+  <button class="replay" id="replay" title="replay" aria-label="replay">↻</button>
+  <canvas id="cv"></canvas>
+  <div class="nav" id="nav"></div>
+</div>
+<script>
+// Four families of analogies, each forming parallel arrows in one embedding space.
+// The 2D positions are arranged so each pair shares a direction within its family.
+//
+// Source ─→ Target  is the analogy arrow. Across pairs in a family, the arrow vector is identical.
+
+const families = [
+  {
+    name: 'gender',
+    color: '#c47a8a',
+    pairs: [
+      { src: 'man',     tgt: 'woman',  sx: -1.45, sy:  0.20, tx: -0.75, ty:  0.20 },
+      { src: 'king',    tgt: 'queen',  sx: -1.45, sy:  0.95, tx: -0.75, ty:  0.95 },
+      { src: 'brother', tgt: 'sister', sx: -1.45, sy: -0.45, tx: -0.75, ty: -0.45 },
+    ],
+  },
+  {
+    name: 'capital → country',
+    color: '#82a8c3',
+    pairs: [
+      { src: 'paris',  tgt: 'france',  sx: 0.75, sy:  1.30, tx: 1.45, ty:  1.30 },
+      { src: 'berlin', tgt: 'germany', sx: 0.75, sy:  0.65, tx: 1.45, ty:  0.65 },
+      { src: 'tokyo',  tgt: 'japan',   sx: 0.75, sy:  0.05, tx: 1.45, ty:  0.05 },
+    ],
+  },
+  {
+    name: 'past tense',
+    color: '#95b078',
+    pairs: [
+      { src: 'walk',  tgt: 'walked',  sx: -1.45, sy: -1.10, tx: -0.75, ty: -1.10 },
+      { src: 'run',   tgt: 'ran',     sx: -1.45, sy: -1.55, tx: -0.75, ty: -1.55 },
+      { src: 'think', tgt: 'thought', sx: -1.45, sy: -1.95, tx: -0.75, ty: -1.95 },
+    ],
+  },
+  {
+    name: 'more',
+    color: '#d4895c',
+    pairs: [
+      { src: 'big',   tgt: 'bigger',   sx: 0.75, sy: -0.70, tx: 1.45, ty: -0.70 },
+      { src: 'small', tgt: 'smaller',  sx: 0.75, sy: -1.20, tx: 1.45, ty: -1.20 },
+      { src: 'fast',  tgt: 'faster',   sx: 0.75, sy: -1.70, tx: 1.45, ty: -1.70 },
+    ],
+  },
+];
+
+// Per family: 2.6s fade in + hold + fade out, then next.
+const T_FAMILY = 3.4;
+const T_FINALE = 3.0; // all families lit at the end
+const T_LOOP = families.length * T_FAMILY + T_FINALE;
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const hint = document.getElementById('hint');
+const navEl = document.getElementById('nav');
+
+families.forEach((f, i) => {
+  const pip = document.createElement('div');
+  pip.className = 'pip';
+  pip.style.color = f.color;
+  navEl.appendChild(pip);
+});
+const pipsEl = navEl.querySelectorAll('.pip');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+let t0 = performance.now();
+
+function activeFamilyAlpha(t, idx) {
+  // returns 0..1 brightness for family idx at time t
+  if (t > T_LOOP - T_FINALE) return 1; // finale: all lit
+  const start = idx * T_FAMILY;
+  const end = start + T_FAMILY;
+  if (t < start || t > end) return 0;
+  const u = (t - start) / T_FAMILY;
+  // 0..0.15 fade in, 0.15..0.85 hold, 0.85..1 fade out
+  if (u < 0.15) return easeInOut(u / 0.15);
+  if (u > 0.85) return easeInOut((1 - u) / 0.15);
+  return 1;
+}
+
+function pairProgress(t, idx, p) {
+  // arrow head progress 0..1 for pair p in family idx at time t
+  if (t > T_LOOP - T_FINALE) return 1;
+  const start = idx * T_FAMILY;
+  const u = clamp01((t - start) / T_FAMILY);
+  // stagger arrows: arrows in a family appear with small offset
+  const offset = p * 0.12;
+  const local = clamp01((u - 0.10 - offset) / 0.40);
+  return easeInOut(local);
+}
+
+function drawArrow(x0, y0, x1, y1, color, alpha, progress) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const ex = x0 + dx * progress, ey = y0 + dy * progress;
+  ctx.strokeStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
+  ctx.lineWidth = 1.8;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(ex, ey); ctx.stroke();
+  if (progress > 0.95) {
+    const a = Math.atan2(dy, dx);
+    ctx.fillStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - 8 * Math.cos(a - 0.35), ey - 8 * Math.sin(a - 0.35));
+    ctx.lineTo(ex - 8 * Math.cos(a + 0.35), ey - 8 * Math.sin(a + 0.35));
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+function withAlpha(hex, a) {
+  return hex + Math.round(a * 255).toString(16).padStart(2, '0');
+}
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w/2, cy = h/2, scale = Math.min(w, h) * 0.22;
+
+  const tNow = (performance.now() - t0) / 1000;
+  const t = tNow % T_LOOP;
+
+  // background axes (very subtle)
+  ctx.strokeStyle = 'rgba(138, 126, 109,0.07)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();
+
+  // collect all points to know their highlight state
+  const pointHighlight = new Map(); // key="x,y" -> { color, alpha }
+
+  families.forEach((f, idx) => {
+    const fa = activeFamilyAlpha(t, idx);
+    f.pairs.forEach((p, j) => {
+      const sxp = cx + p.sx * scale, syp = cy - p.sy * scale;
+      const txp = cx + p.tx * scale, typ = cy - p.ty * scale;
+      if (fa > 0.001) {
+        const prog = pairProgress(t, idx, j);
+        drawArrow(sxp, syp, txp, typ, f.color, fa * 0.85, prog);
+        pointHighlight.set(p.src, { color: f.color, alpha: fa });
+        pointHighlight.set(p.tgt, { color: f.color, alpha: fa });
+      }
+    });
+  });
+
+  // Determine active family for current hint
+  let activeIdx = Math.min(families.length - 1, Math.floor(t / T_FAMILY));
+  let inFinale = (t > T_LOOP - T_FINALE);
+
+  // Draw all words
+  ctx.font = '600 13.5px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.textAlign = 'center';
+  families.forEach((f, idx) => {
+    f.pairs.forEach((p) => {
+      const sxp = cx + p.sx * scale, syp = cy - p.sy * scale;
+      const txp = cx + p.tx * scale, typ = cy - p.ty * scale;
+
+      const hSrc = pointHighlight.get(p.src);
+      const hTgt = pointHighlight.get(p.tgt);
+
+      function drawWord(x, y, word, h) {
+        if (h && h.alpha > 0.01) {
+          ctx.fillStyle = withAlpha(h.color, 1);
+          ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#e8dcc1';
+        } else {
+          ctx.fillStyle = 'rgba(138, 126, 109,0.35)';
+          ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = 'rgba(173, 180, 193, 0.6)';
+        }
+        ctx.fillText(word, x, y - 9);
+      }
+
+      drawWord(sxp, syp, p.src, hSrc);
+      drawWord(txp, typ, p.tgt, hTgt);
+    });
+  });
+
+  // Hint label
+  let label = '';
+  let labelColor = '#786c5b';
+  if (inFinale) {
+    label = 'meaning has axes';
+    labelColor = '#e8dcc1';
+  } else {
+    label = families[activeIdx].name + ' is a direction';
+    labelColor = families[activeIdx].color;
+  }
+  hint.textContent = label;
+  hint.style.color = labelColor;
+
+  // Update pip nav
+  pipsEl.forEach((pip, i) => {
+    if (inFinale) pip.classList.add('active');
+    else pip.classList.toggle('active', i === activeIdx);
+  });
+}
+
+function loop() { draw(); requestAnimationFrame(loop); }
+
+document.getElementById('replay').addEventListener('click', () => {
+  t0 = performance.now();
+});
+
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') {
+    t0 = performance.now();
+  }
+});
+
+fit();
+window.addEventListener('resize', fit);
+loop();
+</script>
+</body>
+</html>

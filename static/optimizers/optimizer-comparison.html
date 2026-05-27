@@ -1,0 +1,2430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimizer Comparison: SGD vs Momentum vs RMSprop vs Adam</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 15px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            margin-bottom: 12px;
+        }
+
+        .header h2 {
+            color: #a371f7;
+            font-size: 1.2rem;
+            margin-bottom: 3px;
+        }
+
+        .header p {
+            color: #8b949e;
+            font-size: 0.8rem;
+        }
+
+        .content-area {
+            flex: 1;
+            display: flex;
+            gap: 15px;
+            min-height: 0;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #161b22;
+        }
+
+        .canvas-container canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .legend-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(13, 17, 23, 0.95);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border-left: 4px solid;
+            min-width: 180px;
+        }
+
+        .legend-item.sgd { border-left-color: #f85149; }
+        .legend-item.momentum { border-left-color: #ffa657; }
+        .legend-item.rmsprop { border-left-color: #3fb950; }
+        .legend-item.adam { border-left-color: #a371f7; }
+
+        .legend-ball {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+        }
+
+        .legend-ball.sgd { background: #f85149; }
+        .legend-ball.momentum { background: #ffa657; }
+        .legend-ball.rmsprop { background: #3fb950; }
+        .legend-ball.adam { background: #a371f7; }
+
+        .legend-info {
+            flex: 1;
+        }
+
+        .legend-name {
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+
+        .legend-item.sgd .legend-name { color: #f85149; }
+        .legend-item.momentum .legend-name { color: #ffa657; }
+        .legend-item.rmsprop .legend-name { color: #3fb950; }
+        .legend-item.adam .legend-name { color: #a371f7; }
+
+        .legend-stats {
+            font-size: 0.65rem;
+            color: #8b949e;
+            margin-top: 2px;
+        }
+
+        .legend-status {
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .status-running { background: rgba(88, 166, 255, 0.2); color: #58a6ff; }
+        .status-converged { background: rgba(63, 185, 80, 0.2); color: #3fb950; }
+        .status-diverged { background: rgba(248, 81, 73, 0.4); color: #f85149; }
+        .status-stuck { background: rgba(255, 166, 87, 0.3); color: #ffa657; }
+        .status-near { background: rgba(163, 113, 247, 0.3); color: #a371f7; }
+
+        .commentary-box {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            width: 300px;
+            background: rgba(13, 17, 23, 0.95);
+            border: 1px solid #30363d;
+            border-left: 3px solid #58a6ff;
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-size: 0.73rem;
+            line-height: 1.6;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .commentary-text b {
+            color: #58a6ff;
+        }
+
+        .commentary-text i {
+            color: #8b949e;
+            font-size: 0.68rem;
+        }
+
+        .commentary-title {
+            color: #58a6ff;
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .commentary-text {
+            color: #c9d1d9;
+        }
+
+        .commentary-text .sgd { color: #f85149; font-weight: 600; }
+        .commentary-text .momentum { color: #ffa657; font-weight: 600; }
+        .commentary-text .rmsprop { color: #3fb950; font-weight: 600; }
+        .commentary-text .adam { color: #a371f7; font-weight: 600; }
+        .commentary-text .tip {
+            color: #ffc107;
+            display: block;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #30363d;
+        }
+
+        .winner-overlay {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(163, 113, 247, 0.95);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: bold;
+            display: none;
+            box-shadow: 0 8px 30px rgba(163, 113, 247, 0.5);
+            z-index: 100;
+        }
+
+        .winner-overlay.show {
+            display: block;
+            animation: winner-pop 0.5s ease-out;
+        }
+
+        @keyframes winner-pop {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .side-panel {
+            width: 340px;
+            background: #161b22;
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overflow-y: auto;
+        }
+
+        .config-section {
+            background: #21262d;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .config-section h3 {
+            color: #58a6ff;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 0.75rem;
+        }
+
+        .config-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px;
+            border-radius: 6px;
+        }
+
+        .config-label {
+            color: #8b949e;
+            font-size: 0.65rem;
+            margin-bottom: 4px;
+        }
+
+        .config-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.8rem;
+        }
+
+        .config-item.sgd .config-value { color: #f85149; }
+        .config-item.momentum .config-value { color: #ffa657; }
+        .config-item.rmsprop .config-value { color: #3fb950; }
+        .config-item.adam .config-value { color: #a371f7; }
+
+        .shared-config {
+            text-align: center;
+            padding: 8px;
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .shared-config .label {
+            font-size: 0.7rem;
+            color: #8b949e;
+        }
+
+        .shared-config .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1rem;
+            color: #58a6ff;
+            font-weight: bold;
+        }
+
+        .ranking-section {
+            background: #21262d;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .ranking-section h3 {
+            color: #ffc107;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .ranking-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .ranking-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+        }
+
+        .ranking-position {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .ranking-position.gold { background: #ffc107; color: #000; }
+        .ranking-position.silver { background: #9e9e9e; color: #000; }
+        .ranking-position.bronze { background: #cd7f32; color: #000; }
+        .ranking-position.fourth { background: #30363d; color: #8b949e; }
+
+        .ranking-name { flex: 1; font-size: 0.8rem; }
+        .ranking-loss { font-family: 'SF Mono', Monaco, monospace; font-size: 0.7rem; color: #8b949e; }
+        .ranking-steps { font-family: 'SF Mono', Monaco, monospace; font-size: 0.65rem; color: #6e7681; }
+
+        .efficiency-section {
+            background: #21262d;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .efficiency-section h3 {
+            color: #f85149;
+            font-size: 0.8rem;
+            margin-bottom: 6px;
+            text-align: center;
+        }
+
+        .efficiency-note {
+            font-size: 0.65rem;
+            color: #8b949e;
+            text-align: center;
+            margin-bottom: 8px;
+            font-style: italic;
+        }
+
+        .efficiency-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .efficiency-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+
+        .efficiency-bar-container {
+            flex: 1;
+            height: 8px;
+            background: #30363d;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .efficiency-bar {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        .efficiency-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.65rem;
+            color: #8b949e;
+            min-width: 45px;
+            text-align: right;
+        }
+
+        .features-section {
+            background: #21262d;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .features-section h3 {
+            color: #8b949e;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .features-table {
+            font-size: 0.7rem;
+        }
+
+        .features-row {
+            display: grid;
+            grid-template-columns: 80px repeat(4, 1fr);
+            gap: 4px;
+            padding: 4px 0;
+            border-bottom: 1px solid #30363d;
+        }
+
+        .features-row:last-child { border-bottom: none; }
+        .features-row.header { font-weight: 600; color: #8b949e; }
+
+        .feature-cell { text-align: center; padding: 2px; }
+        .feature-cell.label { text-align: left; color: #8b949e; }
+        .feature-cell.yes { color: #3fb950; }
+        .feature-cell.no { color: #484f58; }
+
+        .insight-box {
+            background: rgba(163, 113, 247, 0.1);
+            border: 1px solid rgba(163, 113, 247, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 0.75rem;
+            line-height: 1.4;
+            color: #c9d1d9;
+        }
+
+        .insight-box strong { color: #a371f7; }
+
+        .controls-section {
+            background: #21262d;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: auto;
+        }
+
+        .slider-group { margin-bottom: 10px; }
+        .slider-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .slider-label { font-size: 0.75rem; color: #8b949e; }
+        .slider-value { font-family: 'SF Mono', Monaco, monospace; color: #58a6ff; font-size: 0.75rem; }
+
+        input[type="range"] {
+            width: 100%;
+            height: 5px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .button-row { display: flex; gap: 8px; margin-top: 8px; }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .btn-start { background: #238636; color: white; }
+        .btn-start.running { background: #f85149; }
+        .btn-reset { background: #30363d; color: #c9d1d9; }
+        .surface-buttons {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .btn-surface { background: #1f6feb; color: white; font-size: 0.7rem; padding: 8px 6px; }
+        .btn-surface:hover { background: #388bfd; }
+        .btn-random { background: #8957e5; flex: 1.5; }
+        .btn-random:hover { background: #a371f7; }
+        .btn-preset { background: #30363d; flex: 1; }
+        .btn-preset:hover { background: #484f58; }
+        .btn-preset.active, .btn-random.active {
+            background: #8957e5;
+            box-shadow: 0 0 0 2px #a371f7;
+        }
+
+        .surface-params {
+            background: rgba(137, 87, 229, 0.1);
+            border: 1px solid rgba(137, 87, 229, 0.3);
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 8px;
+        }
+
+        .surface-params-title {
+            font-size: 0.65rem;
+            color: #a371f7;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .noise-section {
+            background: rgba(255, 166, 87, 0.1);
+            border: 1px solid rgba(255, 166, 87, 0.3);
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        .noise-section .slider-group {
+            margin-bottom: 4px;
+        }
+
+        .noise-hint {
+            font-size: 0.65rem;
+            color: #8b949e;
+            font-style: italic;
+        }
+
+        .lr-schedule-section {
+            background: rgba(63, 185, 80, 0.1);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        .lr-schedule-buttons {
+            display: flex;
+            gap: 4px;
+            margin: 6px 0;
+        }
+
+        .btn-schedule {
+            flex: 1;
+            padding: 6px 4px;
+            font-size: 0.65rem;
+            background: #30363d;
+            border: none;
+            border-radius: 4px;
+            color: #c9d1d9;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-schedule:hover {
+            background: #484f58;
+        }
+
+        .btn-schedule.active {
+            background: #238636;
+            color: white;
+        }
+
+        .lr-schedule-desc {
+            font-size: 0.65rem;
+            color: #8b949e;
+            font-style: italic;
+        }
+
+        .current-lr {
+            color: #3fb950;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .surface-label {
+            text-align: center;
+            font-size: 0.7rem;
+            color: #8b949e;
+            margin-bottom: 5px;
+        }
+
+        .surface-name {
+            color: #58a6ff;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="header">
+            <h2>🏁 The Optimizer Race - Fair Comparison</h2>
+            <p>All optimizers use the SAME learning rate. Watch how different algorithms navigate the landscape.</p>
+        </div>
+
+        <div class="content-area">
+            <div class="canvas-container">
+                <canvas id="three-canvas"></canvas>
+
+                <div class="legend-overlay">
+                    <div class="legend-item sgd">
+                        <div class="legend-ball sgd"></div>
+                        <div class="legend-info">
+                            <div class="legend-name">SGD</div>
+                            <div class="legend-stats">Loss: <span id="loss-sgd">—</span></div>
+                        </div>
+                        <span class="legend-status status-running" id="status-sgd">Ready</span>
+                    </div>
+                    <div class="legend-item momentum">
+                        <div class="legend-ball momentum"></div>
+                        <div class="legend-info">
+                            <div class="legend-name">Momentum</div>
+                            <div class="legend-stats">Loss: <span id="loss-momentum">—</span></div>
+                        </div>
+                        <span class="legend-status status-running" id="status-momentum">Ready</span>
+                    </div>
+                    <div class="legend-item rmsprop">
+                        <div class="legend-ball rmsprop"></div>
+                        <div class="legend-info">
+                            <div class="legend-name">RMSprop</div>
+                            <div class="legend-stats">Loss: <span id="loss-rmsprop">—</span></div>
+                        </div>
+                        <span class="legend-status status-running" id="status-rmsprop">Ready</span>
+                    </div>
+                    <div class="legend-item adam">
+                        <div class="legend-ball adam"></div>
+                        <div class="legend-info">
+                            <div class="legend-name">Adam</div>
+                            <div class="legend-stats">Loss: <span id="loss-adam">—</span></div>
+                        </div>
+                        <span class="legend-status status-running" id="status-adam">Ready</span>
+                    </div>
+                </div>
+
+                <div class="winner-overlay" id="winner-overlay">🏆 Adam Wins!</div>
+
+                <div class="commentary-box" id="commentary-box">
+                    <div class="commentary-title">📊 Live Commentary</div>
+                    <div class="commentary-text" id="commentary-text">
+                        Press <strong>Start Race</strong> to begin. Watch how different optimizers navigate the landscape!
+                    </div>
+                </div>
+            </div>
+
+            <div class="side-panel">
+                <div class="config-section">
+                    <h3>⚙️ Configuration (Same for All)</h3>
+                    <div class="shared-config">
+                        <div class="label">Learning Rate η</div>
+                        <div class="value" id="shared-lr">0.1</div>
+                    </div>
+                    <div class="config-grid">
+                        <div class="config-item sgd">
+                            <div class="config-label">SGD</div>
+                            <div class="config-value">θ -= η·g</div>
+                        </div>
+                        <div class="config-item momentum">
+                            <div class="config-label">Momentum (β=0.9)</div>
+                            <div class="config-value">v = βv + g</div>
+                        </div>
+                        <div class="config-item rmsprop">
+                            <div class="config-label">RMSprop (β=0.9)</div>
+                            <div class="config-value">θ -= η·g/√v</div>
+                        </div>
+                        <div class="config-item adam">
+                            <div class="config-label">Adam (β₁=0.9, β₂=0.999)</div>
+                            <div class="config-value">θ -= η·m̂/√v̂</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ranking-section">
+                    <h3>🏆 Live Ranking</h3>
+                    <div class="ranking-list" id="ranking-list"></div>
+                </div>
+
+                <div class="efficiency-section">
+                    <h3>📊 Path Efficiency (Lower = More Wasted Movement)</h3>
+                    <div class="efficiency-note">In real training, inefficient paths waste compute & hurt generalization!</div>
+                    <div class="efficiency-list" id="efficiency-list"></div>
+                </div>
+
+                <div class="features-section">
+                    <h3>Feature Comparison</h3>
+                    <div class="features-table">
+                        <div class="features-row header">
+                            <div class="feature-cell label">Feature</div>
+                            <div class="feature-cell">SGD</div>
+                            <div class="feature-cell">Mom</div>
+                            <div class="feature-cell">RMS</div>
+                            <div class="feature-cell">Adam</div>
+                        </div>
+                        <div class="features-row">
+                            <div class="feature-cell label">Momentum</div>
+                            <div class="feature-cell no">✗</div>
+                            <div class="feature-cell yes">✓</div>
+                            <div class="feature-cell no">✗</div>
+                            <div class="feature-cell yes">✓</div>
+                        </div>
+                        <div class="features-row">
+                            <div class="feature-cell label">Adaptive LR</div>
+                            <div class="feature-cell no">✗</div>
+                            <div class="feature-cell no">✗</div>
+                            <div class="feature-cell yes">✓</div>
+                            <div class="feature-cell yes">✓</div>
+                        </div>
+                        <div class="features-row">
+                            <div class="feature-cell label">Bias Correct</div>
+                            <div class="feature-cell no">✗</div>
+                            <div class="feature-cell no">✗</div>
+                            <div class="feature-cell no">✗</div>
+                            <div class="feature-cell yes">✓</div>
+                        </div>
+                        <div class="features-row">
+                            <div class="feature-cell label">Smooth Grad</div>
+                            <div class="feature-cell no">✗</div>
+                            <div class="feature-cell yes">✓</div>
+                            <div class="feature-cell no">✗</div>
+                            <div class="feature-cell yes">✓</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="insight-box" id="insight-box">
+                    <strong>Two Metrics Matter:</strong> (1) <b>Stable Convergence</b> — must stay near minimum for 15 steps. (2) <b>Path Efficiency</b> — shorter path = less wasted compute. Noisy optimizers may "win" but take inefficient zigzag paths. In real training, efficiency → better generalization!
+                </div>
+
+                <div class="controls-section">
+                    <div class="surface-label">Surface: <span class="surface-name" id="surface-name">Random</span></div>
+                    <div class="surface-buttons">
+                        <button class="btn-surface btn-random active" id="random-surface-btn">🎲 New Random</button>
+                        <button class="btn-surface btn-preset" id="preset-valley-btn">Valley</button>
+                        <button class="btn-surface btn-preset" id="preset-saddle-btn">Saddle</button>
+                    </div>
+
+                    <div class="surface-params" id="surface-params">
+                        <div class="surface-params-title">Surface Properties</div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span class="slider-label" id="param1-label">Bump Height</span>
+                                <span class="slider-value" id="param1-display">1.0×</span>
+                            </div>
+                            <input type="range" id="param1-slider" min="0.2" max="2" step="0.1" value="1">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span class="slider-label" id="param2-label">Noise Level</span>
+                                <span class="slider-value" id="param2-display">1.0×</span>
+                            </div>
+                            <input type="range" id="param2-slider" min="0" max="2" step="0.1" value="1">
+                        </div>
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span class="slider-label">Learning Rate</span>
+                            <span class="slider-value" id="lr-display">0.1</span>
+                        </div>
+                        <input type="range" id="lr-slider" min="0.01" max="1.0" step="0.01" value="0.1">
+                    </div>
+
+                    <div class="lr-schedule-section">
+                        <div class="slider-header">
+                            <span class="slider-label">LR Schedule</span>
+                            <span class="slider-value current-lr" id="current-lr-display">0.100</span>
+                        </div>
+                        <div class="lr-schedule-buttons">
+                            <button class="btn-schedule active" data-schedule="constant">Constant</button>
+                            <button class="btn-schedule" data-schedule="cosine">Cosine</button>
+                            <button class="btn-schedule" data-schedule="warm_restarts">🔥 Restarts</button>
+                            <button class="btn-schedule" data-schedule="sgdr">🔥 SGDR</button>
+                        </div>
+                        <div class="lr-schedule-desc" id="lr-schedule-desc">Constant LR throughout training.</div>
+                    </div>
+
+                    <div class="noise-section">
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span class="slider-label">Gradient Noise (≈ 1/batch_size)</span>
+                                <span class="slider-value" id="noise-display">0.0</span>
+                            </div>
+                            <input type="range" id="noise-slider" min="0" max="1" step="0.05" value="0">
+                        </div>
+                        <div class="noise-hint" id="noise-hint">No noise = exact gradients (full batch)</div>
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span class="slider-label">Momentum β₁</span>
+                            <span class="slider-value" id="beta1-display">0.9</span>
+                        </div>
+                        <input type="range" id="beta1-slider" min="0.5" max="0.99" step="0.01" value="0.9">
+                    </div>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span class="slider-label">RMSprop/Adam β₂</span>
+                            <span class="slider-value" id="beta2-display">0.999</span>
+                        </div>
+                        <input type="range" id="beta2-slider" min="0.9" max="0.9999" step="0.001" value="0.999">
+                    </div>
+                    <div class="button-row">
+                        <button class="btn-start" id="start-btn">▶ Start Race</button>
+                        <button class="btn-reset" id="reset-btn">↺ Reset</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const container = document.querySelector('.canvas-container');
+        const canvas = document.getElementById('three-canvas');
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0d1117);
+
+        const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        scene.add(new THREE.AmbientLight(0x404040, 0.8));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // Parameters - SAME learning rate for ALL optimizers
+        let baseLr = 0.1;  // Base learning rate (set by slider)
+        let lr = 0.1;      // Current effective LR (after scheduling)
+        let gradientNoise = 0;  // Simulates mini-batch noise (0 = full batch, exact gradients)
+
+        // LR Scheduler
+        let lrSchedule = 'constant';
+        const warmRestartPeriod = 80;   // Steps between restarts (fixed)
+        const sgdrT0 = 50;              // Initial period for SGDR
+        const sgdrTMult = 2;            // Period multiplier after each restart
+        let stepInterval = 30;  // Faster animation
+        const maxSteps = 500;  // Max steps before declaring "stuck in local minimum"
+
+        // Surface modification parameters (don't regenerate, just scale)
+        let surfaceParam1 = 1.0;  // Bump height / elongation
+        let surfaceParam2 = 1.0;  // Noise level / curvature
+
+        // Hyperparameters - now configurable
+        let beta1 = 0.9;   // Momentum coefficient (for Momentum and Adam)
+        let beta2 = 0.999; // Adam's second moment coefficient
+        let betaRmsprop = 0.9; // RMSprop uses 0.9 by default (different from Adam's 0.999)
+        const eps = 1e-8;
+
+        // ============== RANDOM SURFACE GENERATOR ==============
+        // Attempt to simulate real-world loss landscapes with:
+        // - Multiple local minima (Gaussian bumps)
+        // - Saddle regions
+        // - Noise/roughness
+        // - Valleys and ridges
+
+        class RandomSurface {
+            constructor(seed = null) {
+                this.seed = seed || Math.random() * 10000;
+                this.rng = this.createRNG(this.seed);
+
+                // Lots of features for realistic bumpy landscape
+                this.numGaussians = 8 + Math.floor(this.rng() * 12); // 8-20 bumps
+                this.numRidges = 1 + Math.floor(this.rng() * 3); // 1-3 ridges
+                this.noiseScale = 0.1 + this.rng() * 0.2; // Noticeable roughness
+                this.globalTilt = [(this.rng() - 0.5) * 0.2, (this.rng() - 0.5) * 0.2];
+
+                // Generate random Gaussian bumps (peaks and valleys)
+                this.gaussians = [];
+                for (let i = 0; i < this.numGaussians; i++) {
+                    this.gaussians.push({
+                        cx: (this.rng() - 0.5) * 8,
+                        cz: (this.rng() - 0.5) * 8,
+                        amp: (this.rng() - 0.4) * 4, // Can be negative (valleys) or positive (peaks)
+                        sx: 0.5 + this.rng() * 2,
+                        sz: 0.5 + this.rng() * 2
+                    });
+                }
+
+                // Generate random ridges/valleys
+                this.ridges = [];
+                for (let i = 0; i < this.numRidges; i++) {
+                    this.ridges.push({
+                        angle: this.rng() * Math.PI,
+                        offset: (this.rng() - 0.5) * 4,
+                        amp: (this.rng() - 0.5) * 2,
+                        width: 1 + this.rng() * 2
+                    });
+                }
+
+                // Perlin-like noise using sum of sines
+                this.noiseFreqs = [];
+                for (let i = 0; i < 5; i++) {
+                    this.noiseFreqs.push({
+                        fx: 0.5 + this.rng() * 2,
+                        fz: 0.5 + this.rng() * 2,
+                        phase: this.rng() * Math.PI * 2,
+                        amp: this.noiseScale / (i + 1)
+                    });
+                }
+
+                // Find approximate global minimum for target marker
+                this.findGlobalMin();
+            }
+
+            createRNG(seed) {
+                // Simple seeded RNG (mulberry32)
+                return function() {
+                    let t = seed += 0x6D2B79F5;
+                    t = Math.imul(t ^ t >>> 15, t | 1);
+                    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+                    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+                };
+            }
+
+            evaluate(x, z, bumpScale = 1.0, noiseScale = 1.0) {
+                let val = 0;
+
+                // Base bowl to keep things bounded
+                val += 0.05 * (x * x + z * z);
+
+                // Global tilt
+                val += this.globalTilt[0] * x + this.globalTilt[1] * z;
+
+                // Gaussian bumps - scaled by bumpScale parameter
+                for (const g of this.gaussians) {
+                    const dx = (x - g.cx) / g.sx;
+                    const dz = (z - g.cz) / g.sz;
+                    val += g.amp * bumpScale * Math.exp(-0.5 * (dx * dx + dz * dz));
+                }
+
+                // Ridges - scaled by bumpScale
+                for (const r of this.ridges) {
+                    const proj = x * Math.cos(r.angle) + z * Math.sin(r.angle) - r.offset;
+                    val += r.amp * bumpScale * Math.exp(-0.5 * (proj * proj) / (r.width * r.width));
+                }
+
+                // Noise - scaled by noiseScale parameter
+                for (const n of this.noiseFreqs) {
+                    val += n.amp * noiseScale * Math.sin(n.fx * x + n.phase) * Math.cos(n.fz * z + n.phase);
+                }
+
+                return val;
+            }
+
+            // Numerical gradient
+            gradient(t, bumpScale = 1.0, noiseScale = 1.0) {
+                const h = 0.001;
+                const dx = (this.evaluate(t[0] + h, t[1], bumpScale, noiseScale) - this.evaluate(t[0] - h, t[1], bumpScale, noiseScale)) / (2 * h);
+                const dz = (this.evaluate(t[0], t[1] + h, bumpScale, noiseScale) - this.evaluate(t[0], t[1] - h, bumpScale, noiseScale)) / (2 * h);
+                return [dx, dz];
+            }
+
+            findGlobalMin() {
+                // Grid search for approximate global minimum
+                let minVal = Infinity;
+                let minPos = [0, 0];
+                for (let x = -4; x <= 4; x += 0.5) {
+                    for (let z = -4; z <= 4; z += 0.5) {
+                        const val = this.evaluate(x, z);
+                        if (val < minVal) {
+                            minVal = val;
+                            minPos = [x, z];
+                        }
+                    }
+                }
+                this.globalMin = minPos;
+                this.globalMinVal = minVal;
+            }
+
+            // Find a good starting point (on a high region)
+            findStart() {
+                let maxVal = -Infinity;
+                let maxPos = [3, 3];
+                // Sample random points and pick a high one
+                for (let i = 0; i < 20; i++) {
+                    const x = (this.rng() - 0.5) * 6;
+                    const z = (this.rng() - 0.5) * 6;
+                    const val = this.evaluate(x, z);
+                    if (val > maxVal && Math.abs(x) > 1 && Math.abs(z) > 1) {
+                        maxVal = val;
+                        maxPos = [x, z];
+                    }
+                }
+                return maxPos;
+            }
+        }
+
+        let randomSurface = null;
+
+        // Surface configurations
+        const presetSurfaces = [
+            {
+                name: 'Elongated Valley',
+                type: 'preset',
+                // param1 = elongation factor, param2 = curvature
+                loss: (t, p1, p2) => 0.5 * ((10 * p1) * t[0] * t[0] + p2 * t[1] * t[1]),
+                gradient: (t, p1, p2) => [(10 * p1) * t[0], p2 * t[1]],
+                height: (x, z, p1, p2) => 0.5 * ((10 * p1) * x * x / 16 + p2 * z * z / 16) * 3,
+                start: [3, 2.5],
+                globalMin: [0, 0],
+                param1Name: 'Elongation',
+                param2Name: 'Y Curvature',
+                insight: '<strong>Elongated Valley:</strong> Classic test case. Adam shines here with adaptive scaling + momentum.'
+            },
+            {
+                name: 'Saddle Point',
+                type: 'preset',
+                // param1 = saddle strength, param2 = bowl strength
+                loss: (t, p1, p2) => p1 * (t[0] * t[0] - t[1] * t[1]) + p2 * 0.1 * (t[0]*t[0] + t[1]*t[1]),
+                gradient: (t, p1, p2) => [2 * p1 * t[0] + 0.2 * p2 * t[0], -2 * p1 * t[1] + 0.2 * p2 * t[1]],
+                height: (x, z, p1, p2) => (p1 * (x * x / 16 - z * z / 16) + p2 * 0.1 * (x*x + z*z) / 16) * 2 + 1,
+                start: [2.5, 2.5],
+                globalMin: [0, 0],
+                param1Name: 'Saddle Strength',
+                param2Name: 'Bowl Strength',
+                insight: '<strong>Saddle Point:</strong> Momentum helps escape. SGD can oscillate forever!'
+            }
+        ];
+
+        let currentSurface = {
+            type: 'random',
+            name: 'Random Landscape',
+            insight: '<strong>Random Landscape:</strong> Real-world loss surfaces have multiple local minima, saddle points, and noise. Watch how optimizers handle the chaos!'
+        };
+        let startPos = [3, 3];
+
+        // Optimizer states
+        let optimizers = {};
+        const stableConvergenceSteps = 15;  // Must stay near minimum for this many steps
+        const convergenceThreshold = 0.1;   // Loss threshold for convergence
+        const distThreshold = 0.3;          // Distance to minimum threshold
+
+        function initOptimizers() {
+            // Use current startPos (already set by surface generator)
+            optimizers = {
+                sgd: {
+                    theta: [...startPos],
+                    color: 0xf85149,
+                    name: 'SGD',
+                    converged: false,
+                    diverged: false,
+                    stuck: false,
+                    step: 0,
+                    nearMinCount: 0,
+                    convergedAtStep: -1
+                },
+                momentum: {
+                    theta: [...startPos],
+                    v: [0, 0],
+                    color: 0xffa657,
+                    name: 'Momentum',
+                    converged: false,
+                    diverged: false,
+                    stuck: false,
+                    step: 0,
+                    nearMinCount: 0,
+                    convergedAtStep: -1
+                },
+                rmsprop: {
+                    theta: [...startPos],
+                    v: [eps, eps],
+                    color: 0x3fb950,
+                    name: 'RMSprop',
+                    converged: false,
+                    diverged: false,
+                    stuck: false,
+                    step: 0,
+                    nearMinCount: 0,
+                    convergedAtStep: -1
+                },
+                adam: {
+                    theta: [...startPos],
+                    m: [0, 0],
+                    v: [0, 0],
+                    color: 0xa371f7,
+                    name: 'Adam',
+                    converged: false,
+                    diverged: false,
+                    stuck: false,
+                    step: 0,
+                    nearMinCount: 0,
+                    convergedAtStep: -1
+                }
+            };
+        }
+
+        let running = false;
+        let winner = null;
+        let balls = {};
+        let trails = {};
+        let surface = null;
+        let pathLengths = { sgd: 0, momentum: 0, rmsprop: 0, adam: 0 };  // Track total distance traveled
+
+        function loss(t) {
+            if (currentSurface.type === 'random' && randomSurface) {
+                return randomSurface.evaluate(t[0], t[1], surfaceParam1, surfaceParam2) - randomSurface.globalMinVal * surfaceParam1;
+            }
+            return currentSurface.loss(t, surfaceParam1, surfaceParam2);
+        }
+
+        function gradient(t) {
+            if (currentSurface.type === 'random' && randomSurface) {
+                return randomSurface.gradient(t, surfaceParam1, surfaceParam2);
+            }
+            return currentSurface.gradient(t, surfaceParam1, surfaceParam2);
+        }
+
+        // Simulate mini-batch gradient noise
+        // In real training: gradient variance ∝ 1/batch_size
+        // Noise helps escape local minima but makes optimization noisier
+        function noisyGradient(t) {
+            const g = gradient(t);
+            if (gradientNoise === 0) return g;
+
+            // Add Gaussian-ish noise proportional to gradient magnitude + base noise
+            // This simulates how mini-batch gradients vary around the true gradient
+            const gradMag = Math.sqrt(g[0]*g[0] + g[1]*g[1]) + 0.1;
+            const noiseScale = gradientNoise * gradMag;
+
+            // Box-Muller transform for Gaussian noise
+            const u1 = Math.random();
+            const u2 = Math.random();
+            const z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+            const z1 = Math.sqrt(-2 * Math.log(u1)) * Math.sin(2 * Math.PI * u2);
+
+            return [
+                g[0] + z0 * noiseScale,
+                g[1] + z1 * noiseScale
+            ];
+        }
+
+        // LR Scheduling
+        function getScheduledLR(step) {
+            switch (lrSchedule) {
+                case 'constant':
+                    return baseLr;
+
+                case 'warm_restarts':
+                    // Cosine annealing with warm restarts (SGDR)
+                    // LR follows cosine from baseLr to ~0, then SPIKES back up
+                    const cycleStep = step % warmRestartPeriod;
+                    const cycleProgress = cycleStep / warmRestartPeriod;
+                    return baseLr * (0.05 + 0.95 * (1 + Math.cos(Math.PI * cycleProgress)) / 2);
+
+                case 'cosine':
+                    // Simple cosine decay to 5% of base LR
+                    const progress = Math.min(step / maxSteps, 1);
+                    return baseLr * (0.05 + 0.95 * (1 + Math.cos(Math.PI * progress)) / 2);
+
+                case 'sgdr':
+                    // SGDR: Cosine with INCREASING restart periods (T_mult = 2)
+                    // Cycle lengths: T0, T0*2, T0*4, T0*8, ...
+                    // This is the original SGDR paper approach
+                    let T_cur = sgdrT0;
+                    let stepsUsed = 0;
+                    let cycleNum = 0;
+
+                    // Find which cycle we're in
+                    while (stepsUsed + T_cur <= step) {
+                        stepsUsed += T_cur;
+                        T_cur *= sgdrTMult;
+                        cycleNum++;
+                    }
+
+                    const stepInCycle = step - stepsUsed;
+                    const cycleProgress_sgdr = stepInCycle / T_cur;
+                    return baseLr * (0.05 + 0.95 * (1 + Math.cos(Math.PI * cycleProgress_sgdr)) / 2);
+
+                default:
+                    return baseLr;
+            }
+        }
+
+        function getHeight(x, z) {
+            if (currentSurface.type === 'random' && randomSurface) {
+                // Scale for visualization
+                const val = randomSurface.evaluate(x, z, surfaceParam1, surfaceParam2);
+                return Math.max(0, (val - randomSurface.globalMinVal * surfaceParam1) * 0.8);
+            }
+            return currentSurface.height(x, z, surfaceParam1, surfaceParam2);
+        }
+
+        function createSurface() {
+            // Remove old surface objects (keep lights and balls)
+            const ballMeshes = Object.values(balls);
+            scene.children = scene.children.filter(c =>
+                c.type === 'AmbientLight' || c.type === 'DirectionalLight' || ballMeshes.includes(c)
+            );
+
+            const geometry = new THREE.PlaneGeometry(10, 10, 100, 100);
+            const positions = geometry.attributes.position.array;
+
+            // PlaneGeometry is in XY plane. After rotation.x = -PI/2:
+            // local (x, y, z) -> world (x, z, -y)
+            // So local Y becomes world -Z. We need to negate when sampling height.
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i];
+                const localY = positions[i + 1];
+                // After rotation, this point will be at world (x, height, -localY)
+                // So world Z = -localY, meaning we need height at (x, -localY) to match ball coords
+                positions[i + 2] = getHeight(x, -localY);
+            }
+            geometry.computeVertexNormals();
+
+            const colors = [];
+            let minH = Infinity, maxH = -Infinity;
+            for (let i = 0; i < positions.length; i += 3) {
+                const h = positions[i + 2];
+                minH = Math.min(minH, h);
+                maxH = Math.max(maxH, h);
+            }
+            const range = maxH - minH || 1;
+
+            for (let i = 0; i < positions.length; i += 3) {
+                const h = positions[i + 2];
+                const t = (h - minH) / range;
+                // Color gradient from deep blue (low) to purple to red (high)
+                const r = 0.1 + t * 0.6;
+                const g = 0.1 + (1 - Math.abs(t - 0.5) * 2) * 0.3;
+                const b = 0.3 + (1 - t) * 0.4;
+                colors.push(r, g, b);
+            }
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.9,
+                shininess: 30
+            });
+
+            surface = new THREE.Mesh(geometry, material);
+            surface.rotation.x = -Math.PI / 2;
+            scene.add(surface);
+
+            // Wireframe
+            const wireGeo = new THREE.WireframeGeometry(geometry);
+            const wire = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({
+                color: 0x30363d, opacity: 0.15, transparent: true
+            }));
+            wire.rotation.x = -Math.PI / 2;
+            scene.add(wire);
+
+            // Target marker at global minimum
+            const targetGeo = new THREE.RingGeometry(0.15, 0.25, 32);
+            const targetMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+            const target = new THREE.Mesh(targetGeo, targetMat);
+            target.rotation.x = -Math.PI / 2;
+
+            let minX = 0, minZ = 0;
+            if (currentSurface.type === 'random' && randomSurface) {
+                minX = randomSurface.globalMin[0];
+                minZ = randomSurface.globalMin[1];
+            } else if (currentSurface.globalMin) {
+                minX = currentSurface.globalMin[0];
+                minZ = currentSurface.globalMin[1];
+            }
+            const targetY = getHeight(minX, minZ) + 0.1;
+            target.position.set(minX, targetY, minZ);
+            target.name = 'target';
+            scene.add(target);
+        }
+
+        function createBalls() {
+            Object.values(balls).forEach(b => scene.remove(b));
+            balls = {};
+
+            Object.entries(optimizers).forEach(([key, opt]) => {
+                // Main ball - larger and more visible
+                const geo = new THREE.SphereGeometry(0.22, 32, 32);
+                const mat = new THREE.MeshPhongMaterial({
+                    color: opt.color,
+                    emissive: opt.color,
+                    emissiveIntensity: 0.5,
+                    shininess: 100
+                });
+                const ball = new THREE.Mesh(geo, mat);
+
+                // Outer glow
+                const glowGeo = new THREE.SphereGeometry(0.35, 32, 32);
+                const glowMat = new THREE.MeshBasicMaterial({
+                    color: opt.color, transparent: true, opacity: 0.25
+                });
+                ball.add(new THREE.Mesh(glowGeo, glowMat));
+
+                updateBallPosition(ball, opt.theta);
+                scene.add(ball);
+                balls[key] = ball;
+
+                trails[key] = [[...opt.theta]];
+            });
+        }
+
+        function updateBallPosition(ball, theta) {
+            // Get height at ball position and add offset so ball sits on top of surface
+            const surfaceY = getHeight(theta[0], theta[1]);
+            const y = surfaceY + 0.3;  // Ball radius is 0.22, so 0.3 keeps it above
+            ball.position.set(theta[0], y, theta[1]);
+        }
+
+        function drawTrails() {
+            scene.children = scene.children.filter(c => c.name !== 'trail');
+
+            Object.entries(optimizers).forEach(([key, opt]) => {
+                const trajectory = trails[key];
+                if (trajectory.length < 2) return;
+
+                const points = trajectory.slice(-150).map(p => {
+                    const y = getHeight(p[0], p[1]) + 0.08;  // Slightly above surface
+                    return new THREE.Vector3(p[0], y, p[1]);
+                });
+                const geo = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+                    color: opt.color, transparent: true, opacity: 0.9
+                }));
+                line.name = 'trail';
+                scene.add(line);
+            });
+        }
+
+        function optimizerStep() {
+            // Get current step for LR scheduling
+            const currentStep = Math.max(...Object.values(optimizers).map(o => o.step));
+
+            // Apply LR schedule
+            const prevLr = lr;
+            lr = getScheduledLR(currentStep);
+
+            // Update LR display
+            document.getElementById('current-lr-display').textContent = lr.toFixed(3);
+            document.getElementById('shared-lr').textContent = lr.toFixed(3);
+
+            // Detect warm restart (LR spike)
+            if (lrSchedule === 'warm_restarts' && currentStep > 0 && currentStep % warmRestartPeriod === 0) {
+                document.getElementById('commentary-text').innerHTML =
+                    `<b>🔥 RESTART!</b> Step ${currentStep}: LR spiked to ${lr.toFixed(3)}!<br>` +
+                    `<i>Fixed-period restart. Watch for escape attempts!</i>`;
+            }
+
+            // Detect SGDR restart (increasing periods)
+            if (lrSchedule === 'sgdr' && currentStep > 0) {
+                // Check if we just started a new cycle
+                let T_cur = sgdrT0;
+                let boundary = sgdrT0;
+                while (boundary < currentStep) {
+                    T_cur *= sgdrTMult;
+                    boundary += T_cur;
+                }
+                const prevBoundary = boundary - T_cur;
+                if (currentStep === prevBoundary && prevBoundary > 0) {
+                    document.getElementById('commentary-text').innerHTML =
+                        `<b>🔥 SGDR RESTART!</b> Step ${currentStep}: New cycle (${T_cur} steps).<br>` +
+                        `LR spiked to ${lr.toFixed(3)}. Longer cycle = more time to settle!`;
+                }
+            }
+
+            // Helper to track path length
+            function addPathLength(key, oldTheta, newTheta) {
+                const dx = newTheta[0] - oldTheta[0];
+                const dz = newTheta[1] - oldTheta[1];
+                pathLengths[key] += Math.sqrt(dx * dx + dz * dz);
+            }
+
+            // 1. SGD: θ = θ - η * g
+            // Each optimizer gets its OWN noisy gradient sample (like different mini-batches)
+            if (!optimizers.sgd.converged && !optimizers.sgd.diverged && !optimizers.sgd.stuck) {
+                const oldTheta = [...optimizers.sgd.theta];
+                const g = noisyGradient(optimizers.sgd.theta);
+                optimizers.sgd.theta[0] -= lr * g[0];
+                optimizers.sgd.theta[1] -= lr * g[1];
+                addPathLength('sgd', oldTheta, optimizers.sgd.theta);
+                optimizers.sgd.step++;
+                trails.sgd.push([...optimizers.sgd.theta]);
+            }
+
+            // 2. Momentum: v = β*v + g, θ = θ - η*v
+            // Momentum averages noisy gradients over time → smoother updates
+            if (!optimizers.momentum.converged && !optimizers.momentum.diverged && !optimizers.momentum.stuck) {
+                const oldTheta = [...optimizers.momentum.theta];
+                const g = noisyGradient(optimizers.momentum.theta);
+                // EMA-style momentum - naturally smooths out gradient noise!
+                optimizers.momentum.v[0] = beta1 * optimizers.momentum.v[0] + (1 - beta1) * g[0];
+                optimizers.momentum.v[1] = beta1 * optimizers.momentum.v[1] + (1 - beta1) * g[1];
+                optimizers.momentum.theta[0] -= lr * optimizers.momentum.v[0];
+                optimizers.momentum.theta[1] -= lr * optimizers.momentum.v[1];
+                addPathLength('momentum', oldTheta, optimizers.momentum.theta);
+                optimizers.momentum.step++;
+                trails.momentum.push([...optimizers.momentum.theta]);
+            }
+
+            // 3. RMSprop: v = β*v + (1-β)*g², θ = θ - η*g/√v
+            // Adapts to gradient magnitude, but uses current noisy gradient for update
+            if (!optimizers.rmsprop.converged && !optimizers.rmsprop.diverged && !optimizers.rmsprop.stuck) {
+                const oldTheta = [...optimizers.rmsprop.theta];
+                const g = noisyGradient(optimizers.rmsprop.theta);
+                optimizers.rmsprop.v[0] = betaRmsprop * optimizers.rmsprop.v[0] + (1 - betaRmsprop) * g[0] * g[0];
+                optimizers.rmsprop.v[1] = betaRmsprop * optimizers.rmsprop.v[1] + (1 - betaRmsprop) * g[1] * g[1];
+                optimizers.rmsprop.theta[0] -= lr * g[0] / (Math.sqrt(optimizers.rmsprop.v[0]) + eps);
+                optimizers.rmsprop.theta[1] -= lr * g[1] / (Math.sqrt(optimizers.rmsprop.v[1]) + eps);
+                addPathLength('rmsprop', oldTheta, optimizers.rmsprop.theta);
+                optimizers.rmsprop.step++;
+                trails.rmsprop.push([...optimizers.rmsprop.theta]);
+            }
+
+            // 4. Adam: Full algorithm with bias correction
+            // Combines momentum (smooths noise) + adaptive scaling
+            if (!optimizers.adam.converged && !optimizers.adam.diverged && !optimizers.adam.stuck) {
+                const oldTheta = [...optimizers.adam.theta];
+                const g = noisyGradient(optimizers.adam.theta);
+                const t = optimizers.adam.step + 1;
+
+                // Update biased first moment estimate (momentum)
+                optimizers.adam.m[0] = beta1 * optimizers.adam.m[0] + (1 - beta1) * g[0];
+                optimizers.adam.m[1] = beta1 * optimizers.adam.m[1] + (1 - beta1) * g[1];
+
+                // Update biased second moment estimate (RMSprop-like)
+                optimizers.adam.v[0] = beta2 * optimizers.adam.v[0] + (1 - beta2) * g[0] * g[0];
+                optimizers.adam.v[1] = beta2 * optimizers.adam.v[1] + (1 - beta2) * g[1] * g[1];
+
+                // Bias correction
+                const mHat = [
+                    optimizers.adam.m[0] / (1 - Math.pow(beta1, t)),
+                    optimizers.adam.m[1] / (1 - Math.pow(beta1, t))
+                ];
+                const vHat = [
+                    optimizers.adam.v[0] / (1 - Math.pow(beta2, t)),
+                    optimizers.adam.v[1] / (1 - Math.pow(beta2, t))
+                ];
+
+                // Update
+                optimizers.adam.theta[0] -= lr * mHat[0] / (Math.sqrt(vHat[0]) + eps);
+                optimizers.adam.theta[1] -= lr * mHat[1] / (Math.sqrt(vHat[1]) + eps);
+                addPathLength('adam', oldTheta, optimizers.adam.theta);
+                optimizers.adam.step++;
+                trails.adam.push([...optimizers.adam.theta]);
+            }
+
+            // Check convergence/divergence/stuck
+            const divergeThreshold = 100;
+
+            let globalMin = [0, 0];
+            if (currentSurface.type === 'random' && randomSurface) {
+                globalMin = randomSurface.globalMin;
+            } else if (currentSurface.globalMin) {
+                globalMin = currentSurface.globalMin;
+            }
+
+            Object.entries(optimizers).forEach(([key, opt]) => {
+                const l = loss(opt.theta);
+                const dist = Math.sqrt(
+                    Math.pow(opt.theta[0] - globalMin[0], 2) +
+                    Math.pow(opt.theta[1] - globalMin[1], 2)
+                );
+
+                if (!opt.converged && !opt.diverged && !opt.stuck) {
+                    // Check if near global minimum
+                    const isNearMin = l < convergenceThreshold || dist < distThreshold;
+
+                    if (isNearMin) {
+                        opt.nearMinCount++;
+                        // STABLE convergence: must stay near minimum for N consecutive steps
+                        // This penalizes "touch and bounce" behavior (like noisy RMSprop)
+                        if (opt.nearMinCount >= stableConvergenceSteps) {
+                            opt.converged = true;
+                            opt.convergedAtStep = opt.step;  // Track when convergence happened
+                            if (!winner) {
+                                winner = key;
+                                const overlay = document.getElementById('winner-overlay');
+                                overlay.innerHTML = `🏆 ${opt.name} Wins! (stable for ${stableConvergenceSteps} steps)`;
+                                overlay.style.background = `rgba(${(opt.color >> 16) & 255}, ${(opt.color >> 8) & 255}, ${opt.color & 255}, 0.95)`;
+                                overlay.classList.add('show');
+                            }
+                        }
+                    } else {
+                        // Reset counter if bounced out - this is the key!
+                        // Noisy optimizers will keep resetting
+                        if (opt.nearMinCount > 0) {
+                            opt.nearMinCount = 0;
+                        }
+                    }
+
+                    if (l > divergeThreshold || isNaN(l) || !isFinite(l) ||
+                               Math.abs(opt.theta[0]) > 20 || Math.abs(opt.theta[1]) > 20) {
+                        opt.diverged = true;
+                    } else if (opt.step >= maxSteps) {
+                        // Stuck in local minimum after max steps
+                        opt.stuck = true;
+                    }
+                }
+            });
+
+            // Check if all optimizers are done (converged, diverged, or stuck)
+            const allDone = Object.values(optimizers).every(
+                opt => opt.converged || opt.diverged || opt.stuck
+            );
+            if (allDone && running) {
+                running = false;
+                document.getElementById('start-btn').textContent = '▶ Start Race';
+                document.getElementById('start-btn').classList.remove('running');
+            }
+        }
+
+        function updateUI() {
+            const losses = {};
+
+            Object.entries(optimizers).forEach(([key, opt]) => {
+                const l = loss(opt.theta);
+                losses[key] = { loss: l, steps: opt.step, name: opt.name, color: opt.color };
+
+                document.getElementById(`loss-${key}`).textContent =
+                    opt.diverged ? 'DIVERGED' : l.toFixed(4);
+
+                const status = document.getElementById(`status-${key}`);
+                if (opt.converged) {
+                    status.textContent = `✓ Stable!`;
+                    status.className = 'legend-status status-converged';
+                } else if (opt.diverged) {
+                    status.textContent = 'Diverged!';
+                    status.className = 'legend-status status-diverged';
+                } else if (opt.stuck) {
+                    status.textContent = 'Local Min';
+                    status.className = 'legend-status status-stuck';
+                } else if (opt.nearMinCount > 0) {
+                    // Near minimum but not stable yet - show progress
+                    status.textContent = `Near! ${opt.nearMinCount}/${stableConvergenceSteps}`;
+                    status.className = 'legend-status status-near';
+                } else {
+                    status.textContent = `Step ${opt.step}`;
+                    status.className = 'legend-status status-running';
+                }
+            });
+
+            // Update ranking (converged > stuck > running > diverged, then by loss)
+            const sorted = Object.entries(losses)
+                .sort((a, b) => {
+                    const optA = optimizers[a[0]], optB = optimizers[b[0]];
+                    // Diverged always last
+                    if (optA.diverged && !optB.diverged) return 1;
+                    if (!optA.diverged && optB.diverged) return -1;
+                    // Then sort by loss
+                    return a[1].loss - b[1].loss;
+                });
+
+            const positions = ['gold', 'silver', 'bronze', 'fourth'];
+            document.getElementById('ranking-list').innerHTML = sorted.map(([key, data], i) => `
+                <div class="ranking-item">
+                    <div class="ranking-position ${positions[i]}">${i + 1}</div>
+                    <div class="ranking-name" style="color: #${data.color.toString(16).padStart(6, '0')}">${data.name}</div>
+                    <div class="ranking-loss">${optimizers[key].diverged ? '∞' : data.loss.toFixed(4)}</div>
+                    <div class="ranking-steps">${data.steps} steps</div>
+                </div>
+            `).join('');
+
+            // Update path efficiency display
+            // Efficiency = direct distance / path length (1 = perfect straight line, lower = more wasted movement)
+            let globalMin = [0, 0];
+            if (currentSurface.type === 'random' && randomSurface) {
+                globalMin = randomSurface.globalMin;
+            } else if (currentSurface.globalMin) {
+                globalMin = currentSurface.globalMin;
+            }
+
+            const directDist = Math.sqrt(
+                Math.pow(startPos[0] - globalMin[0], 2) +
+                Math.pow(startPos[1] - globalMin[1], 2)
+            );
+
+            // Sort by efficiency (higher = better, so most efficient first)
+            const efficiencyData = Object.entries(pathLengths)
+                .map(([key, pathLen]) => ({
+                    key,
+                    name: optimizers[key].name,
+                    color: optimizers[key].color,
+                    pathLen,
+                    efficiency: pathLen > 0 ? (directDist / pathLen) : 1,
+                    diverged: optimizers[key].diverged
+                }))
+                .sort((a, b) => b.efficiency - a.efficiency);
+
+            const maxPathLen = Math.max(...efficiencyData.map(d => d.pathLen), 1);
+
+            document.getElementById('efficiency-list').innerHTML = efficiencyData.map(d => {
+                const barWidth = Math.min(100, (d.pathLen / maxPathLen) * 100);
+                const effDisplay = d.diverged ? '—' : (d.efficiency * 100).toFixed(0) + '%';
+                const barColor = d.diverged ? '#6e7681' : `#${d.color.toString(16).padStart(6, '0')}`;
+                return `
+                    <div class="efficiency-item">
+                        <span style="color: #${d.color.toString(16).padStart(6, '0')}; min-width: 55px;">${d.name}</span>
+                        <div class="efficiency-bar-container">
+                            <div class="efficiency-bar" style="width: ${barWidth}%; background: ${barColor};"></div>
+                        </div>
+                        <span class="efficiency-value">${effDisplay}</span>
+                    </div>
+                `;
+            }).join('');
+
+            // Update shared LR display
+            document.getElementById('shared-lr').textContent = lr.toFixed(3);
+
+            // Update commentary
+            updateCommentary();
+        }
+
+        // Track history for analysis
+        let lossHistory = { sgd: [], momentum: [], rmsprop: [], adam: [] };
+        let positionHistory = { sgd: [], momentum: [], rmsprop: [], adam: [] };
+        let lastCommentStep = -1;
+
+        function updateCommentary() {
+            const step = Math.max(...Object.values(optimizers).map(o => o.step));
+            if (step === 0) return;
+
+            // Track loss and position history
+            Object.keys(optimizers).forEach(key => {
+                const l = loss(optimizers[key].theta);
+                lossHistory[key].push(l);
+                positionHistory[key].push([...optimizers[key].theta]);
+                if (lossHistory[key].length > 50) {
+                    lossHistory[key].shift();
+                    positionHistory[key].shift();
+                }
+            });
+
+            let comments = [];
+            let tips = [];
+            const hasWinner = Object.values(optimizers).some(o => o.converged);
+
+            // Analyze each optimizer's behavior
+            const analyses = {};
+            Object.entries(optimizers).forEach(([key, opt]) => {
+                const history = lossHistory[key];
+                const positions = positionHistory[key];
+                analyses[key] = {
+                    opt,
+                    loss: history[history.length - 1] || 0,
+                    isOscillating: detectOscillation(history),
+                    isStagnant: detectStagnation(history),
+                    gradMag: getGradientMagnitude(opt.theta),
+                    pathSmoothness: getPathSmoothness(positions),
+                    velocityMag: getVelocityMagnitude(key),
+                    recentProgress: getRecentProgress(history)
+                };
+            });
+
+            // === STEP 10: Initial observations ===
+            if (step === 10 && !hasWinner) {
+                comments.push(`<b>🚦 Race started!</b> All optimizers begin at the same point.`);
+                comments.push(`<i>Win condition: stay near minimum for ${stableConvergenceSteps} consecutive steps (stability matters!)</i>`);
+                if (gradientNoise > 0) {
+                    comments.push(`🎲 <b>Gradient noise ON</b> — simulating mini-batch stochasticity!`);
+                }
+            }
+
+            // === STEP 25: Early behavior patterns ===
+            if (step === 25 && !hasWinner) {
+                const dominated = Object.entries(analyses)
+                    .filter(([k, a]) => !a.opt.converged && !a.opt.diverged)
+                    .sort((a, b) => a[1].loss - b[1].loss);
+
+                if (dominated.length >= 2) {
+                    const [leader, second] = dominated;
+                    if (leader[1].loss < second[1].loss * 0.8) {
+                        comments.push(`<b>Early lead:</b> <span class="${leader[0]}">${leader[1].opt.name}</span> pulling ahead!`);
+                    }
+                }
+
+                // Check if momentum is building
+                if (analyses.momentum.velocityMag > 0.1 && !optimizers.momentum.converged) {
+                    comments.push(`⚡ <span class="momentum">Momentum</span> building velocity — watch it accelerate through flat regions.`);
+                }
+            }
+
+            // === STEP 50: Oscillation/noise effects ===
+            if (step === 50 && !hasWinner) {
+                if (gradientNoise > 0.3) {
+                    // With noise: explain how it affects different optimizers
+                    comments.push(`<b>🎲 Noise effects visible!</b> Watch the jagged paths.`);
+                    comments.push(`<span class="sgd">SGD</span> is most affected — no averaging. <span class="momentum">Momentum</span>/<span class="adam">Adam</span> smooth out noise via EMA.`);
+                } else {
+                    // Without noise: standard oscillation commentary
+                    if (analyses.sgd.isOscillating && !optimizers.sgd.converged && !optimizers.sgd.diverged) {
+                        comments.push(`🔄 <span class="sgd">SGD oscillating!</span> It has no memory — each step only sees current gradient, causing zig-zag in steep valleys.`);
+                    }
+
+                    // Compare momentum smoothing
+                    if (!analyses.momentum.isOscillating && analyses.sgd.isOscillating) {
+                        comments.push(`✨ <span class="momentum">Momentum</span> smoother path — accumulated velocity cancels out oscillations.`);
+                    }
+                }
+            }
+
+            // === STEP 80: Adaptive methods kicking in ===
+            if (step === 80 && !hasWinner) {
+                const rmsActive = !optimizers.rmsprop.converged && !optimizers.rmsprop.diverged;
+                const adamActive = !optimizers.adam.converged && !optimizers.adam.diverged;
+
+                if (rmsActive || adamActive) {
+                    comments.push(`<b>📊 Adaptive scaling active:</b> RMSprop & Adam now have gradient history.`);
+                    comments.push(`They auto-shrink steps in steep directions, enlarge in flat — like per-parameter learning rates.`);
+                }
+            }
+
+            // === STEP 120: Momentum effects - your observation! ===
+            if (step === 120 && !hasWinner) {
+                // Check if momentum-based optimizers have "noisier" but potentially better paths
+                const momSmooth = analyses.momentum.pathSmoothness;
+                const adamSmooth = analyses.adam.pathSmoothness;
+                const sgdSmooth = analyses.sgd.pathSmoothness;
+
+                if ((momSmooth < sgdSmooth * 0.8 || adamSmooth < sgdSmooth * 0.8) && lr > 0.15) {
+                    comments.push(`<b>🌊 High LR + Momentum effect:</b> Notice the "swooping" paths?`);
+                    comments.push(`Momentum carries optimizers <i>through</i> shallow minima — like a ball rolling through small dips. This can help escape!`);
+                }
+
+                // Check for overshooting
+                if (analyses.momentum.isOscillating && analyses.momentum.velocityMag > 0.3) {
+                    comments.push(`⚠️ <span class="momentum">Momentum</span> overshooting — too much velocity! Try lower β₁.`);
+                }
+            }
+
+            // === STEP 180: Why Adam combines both ===
+            if (step === 180 && !hasWinner) {
+                const adamLoss = analyses.adam.loss;
+                const rmsLoss = analyses.rmsprop.loss;
+                const momLoss = analyses.momentum.loss;
+
+                if (!optimizers.adam.converged && !optimizers.adam.diverged) {
+                    if (adamLoss < rmsLoss && adamLoss < momLoss) {
+                        comments.push(`<b>🧠 Adam's advantage:</b> Combines momentum's direction smoothing WITH adaptive step sizes.`);
+                        comments.push(`Momentum alone can overshoot. RMSprop alone lacks direction memory. Adam gets both.`);
+                    } else if (rmsLoss < adamLoss * 0.9) {
+                        comments.push(`<b>Interesting:</b> <span class="rmsprop">RMSprop</span> lower loss than <span class="adam">Adam</span>!`);
+                        comments.push(`But check <b>Path Efficiency</b> below — RMSprop's zigzag path wastes compute.`);
+                    }
+                }
+            }
+
+            // === STEP 200: Path efficiency analysis ===
+            if (step === 200 && !hasWinner && gradientNoise > 0.1) {
+                const rmsPath = pathLengths.rmsprop;
+                const adamPath = pathLengths.adam;
+                const momPath = pathLengths.momentum;
+
+                if (rmsPath > adamPath * 1.5 && rmsPath > momPath * 1.3) {
+                    comments.push(`<b>📊 Path Efficiency:</b> <span class="rmsprop">RMSprop</span> traveled ${(rmsPath/adamPath).toFixed(1)}× more than <span class="adam">Adam</span>!`);
+                    comments.push(`<i>In real training: longer paths = more compute, worse generalization. Random exploration isn't free!</i>`);
+                }
+            }
+
+            // === STEP 100: RMSprop noise sensitivity ===
+            if (step === 100 && !hasWinner && gradientNoise > 0.2 && lr > 0.1) {
+                // Check if RMSprop is more erratic than Adam
+                const rmsSmooth = analyses.rmsprop.pathSmoothness;
+                const adamSmooth = analyses.adam.pathSmoothness;
+                const momSmooth = analyses.momentum.pathSmoothness;
+
+                if (rmsSmooth > adamSmooth * 1.3 && !optimizers.rmsprop.converged && !optimizers.rmsprop.diverged) {
+                    comments.push(`<b>📊 Notice <span class="rmsprop">RMSprop</span>'s jagged path?</b>`);
+                    comments.push(`RMSprop smooths the <i>denominator</i> (step size scaling) but uses <b>raw noisy gradient</b> in numerator.`);
+                    comments.push(`<i>Formula: θ -= η · <b>g_noisy</b> / √(smooth_v)</i>`);
+                }
+            }
+
+            // === STEP 130: Why Adam handles noise better ===
+            if (step === 130 && !hasWinner && gradientNoise > 0.2) {
+                const rmsSmooth = analyses.rmsprop.pathSmoothness;
+                const adamSmooth = analyses.adam.pathSmoothness;
+
+                if (rmsSmooth > adamSmooth * 1.2 && !optimizers.adam.converged) {
+                    comments.push(`<b>🧠 <span class="adam">Adam</span> smoother than <span class="rmsprop">RMSprop</span>!</b> Why?`);
+                    comments.push(`Adam smooths <b>both</b> numerator (momentum m̂) AND denominator (√v̂).`);
+                    comments.push(`<i>Formula: θ -= η · <b>smooth_m</b> / √(smooth_v)</i>`);
+                    comments.push(`<i>This is why Adam dominates in noisy, high-dimensional training!</i>`);
+                }
+            }
+
+            // === STEP 150: Noise helping escape? ===
+            if (step === 150 && !hasWinner && gradientNoise > 0.3) {
+                // Check if any optimizer escaped a local min due to noise
+                const stillMoving = Object.entries(analyses).filter(([k, a]) =>
+                    !a.opt.converged && !a.opt.diverged && a.recentProgress > 0.05
+                );
+                if (stillMoving.length > 0) {
+                    comments.push(`<b>🎲 Noise at work!</b> Random kicks helping optimizers explore.`);
+                    comments.push(`<i>This is why small batches can escape local minima — the noise acts like random exploration!</i>`);
+                }
+            }
+
+            // === Warm restart approaching warning ===
+            if ((lrSchedule === 'warm_restarts' || lrSchedule === 'sgdr') && !hasWinner) {
+                let stepsToRestart = 0;
+                if (lrSchedule === 'warm_restarts') {
+                    stepsToRestart = warmRestartPeriod - (step % warmRestartPeriod);
+                } else {
+                    // SGDR - find next boundary
+                    let T_cur = sgdrT0;
+                    let boundary = sgdrT0;
+                    while (boundary <= step) {
+                        T_cur *= sgdrTMult;
+                        boundary += T_cur;
+                    }
+                    stepsToRestart = boundary - step;
+                }
+                if (stepsToRestart === 10) {
+                    comments.push(`<b>🔥 Restart in 10 steps!</b> LR will spike back to ${baseLr.toFixed(3)}.`);
+                    if (gradientNoise > 0) {
+                        comments.push(`<i>With noise ON, this could shake things up!</i>`);
+                    }
+                }
+            }
+
+            // === STEP 250: Gradient magnitude insights ===
+            if (step === 250 && !hasWinner) {
+                Object.entries(analyses).forEach(([key, a]) => {
+                    if (a.opt.converged || a.opt.diverged || a.opt.stuck) return;
+
+                    if (a.gradMag < 0.05 && !a.isStagnant) {
+                        comments.push(`🔍 <span class="${key}">${a.opt.name}</span>: gradient ≈ 0 but loss still high → likely in a <b>local minimum</b> or saddle point.`);
+                    }
+                });
+
+                // Educational note about local minima
+                const stuckCount = Object.values(analyses).filter(a => a.gradMag < 0.05 && a.loss > 0.5).length;
+                if (stuckCount >= 2 && gradientNoise === 0) {
+                    comments.push(`<i>Try adding gradient noise! In real NNs, mini-batch noise helps escape.</i>`);
+                } else if (stuckCount >= 2 && gradientNoise > 0) {
+                    comments.push(`<i>Even with noise, deep local minima are hard to escape. Try more noise or higher LR!</i>`);
+                }
+            }
+
+            // === STEP 350: Late game analysis ===
+            if (step === 350 && !hasWinner) {
+                const stillMoving = Object.entries(analyses)
+                    .filter(([k, a]) => !a.opt.converged && !a.opt.diverged && !a.opt.stuck && a.recentProgress > 0.01);
+
+                if (stillMoving.length > 0) {
+                    const best = stillMoving.sort((a, b) => a[1].loss - b[1].loss)[0];
+                    comments.push(`🏃 <span class="${best[0]}">${best[1].opt.name}</span> still making progress. Loss: ${best[1].loss.toFixed(3)}`);
+                } else {
+                    comments.push(`<b>⏳ All optimizers slowing down.</b> Either converging or stuck.`);
+                }
+            }
+
+            // === Convergence celebration with explanation ===
+            Object.entries(optimizers).forEach(([key, opt]) => {
+                // Only fire once when convergence just happened
+                if (opt.converged && opt.convergedAtStep === step) {
+                    comments.push(`🎉 <span class="${key}">${opt.name}</span> <b>stably converged</b> in ${opt.step} steps!`);
+
+                    // Calculate efficiency for context
+                    let globalMin = [0, 0];
+                    if (currentSurface.type === 'random' && randomSurface) globalMin = randomSurface.globalMin;
+                    else if (currentSurface.globalMin) globalMin = currentSurface.globalMin;
+                    const directDist = Math.sqrt(Math.pow(startPos[0]-globalMin[0],2) + Math.pow(startPos[1]-globalMin[1],2));
+                    const efficiency = pathLengths[key] > 0 ? (directDist / pathLengths[key]) : 1;
+
+                    // Add educational note about WHY this one won
+                    if (key === 'adam') {
+                        comments.push(`<i>Adam's smoothed updates: stable AND efficient (${(efficiency*100).toFixed(0)}% path efficiency).</i>`);
+                    } else if (key === 'momentum') {
+                        comments.push(`<i>Momentum's velocity helped — ${(efficiency*100).toFixed(0)}% efficiency.</i>`);
+                    } else if (key === 'rmsprop') {
+                        if (efficiency < 0.3) {
+                            comments.push(`<i>⚠️ RMSprop won, but only ${(efficiency*100).toFixed(0)}% efficient — zigzag path!</i>`);
+                            comments.push(`<i>In real training, this wastes compute & hurts generalization.</i>`);
+                        } else {
+                            comments.push(`<i>RMSprop managed stability! ${(efficiency*100).toFixed(0)}% efficient.</i>`);
+                        }
+                    } else if (key === 'sgd') {
+                        comments.push(`<i>SGD's simplicity: ${(efficiency*100).toFixed(0)}% efficient.</i>`);
+                    }
+                }
+            });
+
+            // === Detect "touch and bounce" behavior ===
+            Object.entries(optimizers).forEach(([key, opt]) => {
+                // If optimizer was near min but got reset (bounced out)
+                if (!opt.converged && !opt.diverged && opt.nearMinCount === 0) {
+                    const history = lossHistory[key];
+                    if (history.length > 5) {
+                        const wasNear = history.slice(-5, -1).some(l => l < convergenceThreshold * 2);
+                        const nowFar = history[history.length - 1] > convergenceThreshold * 3;
+                        if (wasNear && nowFar && step > 50 && step % 30 === 0) {
+                            comments.push(`⚠️ <span class="${key}">${opt.name}</span> bounced out of minimum!`);
+                            if (key === 'rmsprop' && gradientNoise > 0.2) {
+                                comments.push(`<i>RMSprop's noisy numerator caused instability. In real training, this hurts!</i>`);
+                            }
+                        }
+                    }
+                }
+            });
+
+            // === Divergence explanation ===
+            Object.entries(optimizers).forEach(([key, opt]) => {
+                if (opt.diverged && lossHistory[key].length > 2) {
+                    const prevLoss = lossHistory[key][lossHistory[key].length - 2];
+                    if (prevLoss && prevLoss < 100 && step === opt.step) {
+                        if (gradientNoise > 0.3 && lr > 0.2) {
+                            comments.push(`💥 <span class="${key}">${opt.name}</span> diverged! High LR + high noise = explosive combo.`);
+                            comments.push(`<i>Noise amplified by large LR caused overshooting beyond recovery.</i>`);
+                        } else {
+                            comments.push(`💥 <span class="${key}">${opt.name}</span> diverged! LR too high → steps overshoot → loss explodes.`);
+                        }
+                    }
+                }
+            });
+
+            // === High noise + high LR warning at step 70 ===
+            if (step === 70 && gradientNoise > 0.4 && lr > 0.25 && !hasWinner) {
+                const divergedCount = Object.values(optimizers).filter(o => o.diverged).length;
+                if (divergedCount === 0) {
+                    comments.push(`<b>⚠️ High noise + high LR!</b> This is a stress test.`);
+                    comments.push(`Watch <span class="sgd">SGD</span> struggle most (no smoothing). <span class="adam">Adam</span>/<span class="momentum">Momentum</span> should be more stable.`);
+                }
+            }
+
+            // === All stuck - educational tips ===
+            if (!hasWinner) {
+                const activeOpts = Object.values(optimizers).filter(o => !o.converged);
+                const allDiverged = activeOpts.every(o => o.diverged);
+                const allStuck = activeOpts.every(o => o.stuck || o.diverged);
+
+                if (allDiverged) {
+                    comments.push(`<b>💥 All diverged!</b> Learning rate too aggressive.`);
+                    tips.push(`💡 <b>Fix:</b> Lower the learning rate. In practice, LR is the most important hyperparameter!`);
+                }
+
+                if (allStuck && !allDiverged) {
+                    comments.push(`<b>⏱️ All stuck in local minima!</b>`);
+                    if (gradientNoise === 0) {
+                        tips.push(`💡 <b>Try adding gradient noise!</b> Slide "Gradient Noise" up to simulate mini-batch stochasticity.`);
+                    } else if (gradientNoise < 0.5) {
+                        tips.push(`💡 <b>Try more noise!</b> Current noise may not be enough to escape this minimum.`);
+                    }
+                    tips.push(`💡 <b>Other options:</b> Reset for new random init, or increase LR + momentum.`);
+                }
+            }
+
+            // Update display if we have new content
+            if (comments.length > 0 || tips.length > 0) {
+                let html = comments.join('<br>');
+                if (tips.length > 0) {
+                    html += '<br><span class="tip">' + tips.join('<br>') + '</span>';
+                }
+                document.getElementById('commentary-text').innerHTML = html;
+                lastCommentStep = step;
+            }
+        }
+
+        function detectOscillation(history) {
+            if (history.length < 8) return false;
+            let directionChanges = 0;
+            for (let i = 2; i < history.length; i++) {
+                const prev = history[i-1] - history[i-2];
+                const curr = history[i] - history[i-1];
+                if (prev * curr < 0) directionChanges++;
+            }
+            return directionChanges > history.length * 0.4;
+        }
+
+        function detectStagnation(history) {
+            if (history.length < 15) return false;
+            const recent = history.slice(-15);
+            const range = Math.max(...recent) - Math.min(...recent);
+            const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+            return avg > 0.01 && range < avg * 0.02;
+        }
+
+        function getGradientMagnitude(theta) {
+            const g = gradient(theta);
+            return Math.sqrt(g[0] * g[0] + g[1] * g[1]);
+        }
+
+        function getPathSmoothness(positions) {
+            // Measure how "smooth" the path is (lower = more curves/oscillations)
+            if (positions.length < 5) return 1;
+            let totalAngleChange = 0;
+            for (let i = 2; i < positions.length; i++) {
+                const v1 = [positions[i-1][0] - positions[i-2][0], positions[i-1][1] - positions[i-2][1]];
+                const v2 = [positions[i][0] - positions[i-1][0], positions[i][1] - positions[i-1][1]];
+                const dot = v1[0]*v2[0] + v1[1]*v2[1];
+                const mag1 = Math.sqrt(v1[0]*v1[0] + v1[1]*v1[1]);
+                const mag2 = Math.sqrt(v2[0]*v2[0] + v2[1]*v2[1]);
+                if (mag1 > 0.001 && mag2 > 0.001) {
+                    const cosAngle = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+                    totalAngleChange += Math.acos(cosAngle);
+                }
+            }
+            return totalAngleChange / positions.length;
+        }
+
+        function getVelocityMagnitude(key) {
+            const opt = optimizers[key];
+            if (opt.v) {
+                return Math.sqrt(opt.v[0]*opt.v[0] + opt.v[1]*opt.v[1]);
+            }
+            if (opt.m) {
+                return Math.sqrt(opt.m[0]*opt.m[0] + opt.m[1]*opt.m[1]);
+            }
+            return 0;
+        }
+
+        function getRecentProgress(history) {
+            if (history.length < 10) return 1;
+            const old = history[history.length - 10];
+            const now = history[history.length - 1];
+            return Math.max(0, old - now);
+        }
+
+        function reset() {
+            running = false;
+            winner = null;
+            document.getElementById('start-btn').textContent = '▶ Start Race';
+            document.getElementById('start-btn').classList.remove('running');
+            document.getElementById('winner-overlay').classList.remove('show');
+
+            // Reset commentary, history, and path lengths
+            lossHistory = { sgd: [], momentum: [], rmsprop: [], adam: [] };
+            positionHistory = { sgd: [], momentum: [], rmsprop: [], adam: [] };
+            pathLengths = { sgd: 0, momentum: 0, rmsprop: 0, adam: 0 };
+            lastCommentStep = -1;
+
+            // Randomize starting position - pick farthest point from global minimum
+            let globalMin = [0, 0];
+            if (currentSurface.type === 'random' && randomSurface) {
+                globalMin = randomSurface.globalMin;
+            } else if (currentSurface.globalMin) {
+                globalMin = currentSurface.globalMin;
+            }
+
+            // Sample random points and pick the one farthest from global minimum
+            let maxDist = 0;
+            let newStart = [3, 3];
+            for (let i = 0; i < 30; i++) {
+                // Random point within bounds
+                const x = (Math.random() - 0.5) * 8;  // -4 to 4
+                const z = (Math.random() - 0.5) * 8;
+                const dist = Math.sqrt(
+                    Math.pow(x - globalMin[0], 2) +
+                    Math.pow(z - globalMin[1], 2)
+                );
+                // Pick farthest point that's within surface bounds
+                if (dist > maxDist && Math.abs(x) < 4.5 && Math.abs(z) < 4.5) {
+                    maxDist = dist;
+                    newStart = [x, z];
+                }
+            }
+            startPos = newStart;
+
+            // Update commentary with distance info
+            document.getElementById('commentary-text').innerHTML =
+                `🎯 <b>New start:</b> Distance to goal = <b>${maxDist.toFixed(1)}</b><br>` +
+                `Starting from farthest random point. Drag to reposition or press <strong>Start Race</strong>!`;
+
+            initOptimizers();
+            createBalls();
+
+            // Reset trails
+            Object.keys(optimizers).forEach(key => {
+                trails[key] = [[...startPos]];
+            });
+            drawTrails();
+            updateUI();
+        }
+
+        function usePresetSurface(index) {
+            currentSurface = presetSurfaces[index];
+            randomSurface = null;
+            startPos = [...currentSurface.start];
+
+            // Reset surface params to default
+            surfaceParam1 = 1.0;
+            surfaceParam2 = 1.0;
+            document.getElementById('param1-slider').value = 1;
+            document.getElementById('param2-slider').value = 1;
+            document.getElementById('param1-display').textContent = '1.0×';
+            document.getElementById('param2-display').textContent = '1.0×';
+
+            document.getElementById('surface-name').textContent = currentSurface.name;
+            document.getElementById('insight-box').innerHTML = currentSurface.insight;
+            updateSurfaceParamLabels();
+
+            // Set active button
+            const buttonId = index === 0 ? 'preset-valley-btn' : 'preset-saddle-btn';
+            setActiveButton(buttonId);
+
+            createSurface();
+            reset();
+
+            document.getElementById('commentary-text').innerHTML =
+                `Loaded <strong>${currentSurface.name}</strong>. 🎯 Drag balls to reposition. Adjust properties with sliders above.`;
+        }
+
+        function updateSurfaceParamLabels() {
+            if (currentSurface.type === 'random') {
+                document.getElementById('param1-label').textContent = 'Bump Height';
+                document.getElementById('param2-label').textContent = 'Noise Level';
+            } else if (currentSurface.param1Name) {
+                document.getElementById('param1-label').textContent = currentSurface.param1Name;
+                document.getElementById('param2-label').textContent = currentSurface.param2Name;
+            }
+        }
+
+        function setActiveButton(buttonId) {
+            // Remove active class from all surface buttons
+            document.querySelectorAll('.btn-surface').forEach(btn => btn.classList.remove('active'));
+            // Add active to the clicked one
+            document.getElementById(buttonId)?.classList.add('active');
+        }
+
+        function generateRandomSurface() {
+            // Create truly random surface with lots of bumps
+            randomSurface = new RandomSurface();
+            currentSurface = {
+                type: 'random',
+                name: `Random #${Math.floor(randomSurface.seed)}`,
+                insight: `<strong>Random Landscape:</strong> ${randomSurface.numGaussians} peaks/valleys, ${randomSurface.numRidges} ridges. Real loss landscapes are chaotic like this! Watch optimizers get stuck in local minima or oscillate wildly.`
+            };
+            startPos = randomSurface.findStart();
+
+            // Reset surface params to default
+            surfaceParam1 = 1.0;
+            surfaceParam2 = 1.0;
+            document.getElementById('param1-slider').value = 1;
+            document.getElementById('param2-slider').value = 1;
+            document.getElementById('param1-display').textContent = '1.0×';
+            document.getElementById('param2-display').textContent = '1.0×';
+
+            document.getElementById('surface-name').textContent = currentSurface.name;
+            document.getElementById('insight-box').innerHTML = currentSurface.insight;
+            updateSurfaceParamLabels();
+            setActiveButton('random-surface-btn');
+            createSurface();
+            reset();
+
+            // Set initial commentary
+            document.getElementById('commentary-text').innerHTML =
+                `<b>🎲 New landscape:</b> ${randomSurface.numGaussians} peaks/valleys, ${randomSurface.numRidges} ridges.<br>` +
+                `🎯 Green ring = global minimum. Drag balls to reposition start.<br>` +
+                `<i>Watch how each optimizer navigates the bumpy terrain differently!</i>`;
+        }
+
+        // Mouse controls
+        let rotation = { x: 0.7, y: 0.4 };
+        let isRotating = false;
+        let isDraggingBall = false;
+        let prevMouse = { x: 0, y: 0 };
+
+        // Raycaster for ball picking
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function getMousePosition(e) {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        }
+
+        function getSurfacePosition(e) {
+            getMousePosition(e);
+            raycaster.setFromCamera(mouse, camera);
+
+            // Create a horizontal plane at y=0 for intersection
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const intersectPoint = new THREE.Vector3();
+            raycaster.ray.intersectPlane(plane, intersectPoint);
+
+            if (intersectPoint) {
+                // Clamp to surface bounds
+                const x = Math.max(-4.5, Math.min(4.5, intersectPoint.x));
+                const z = Math.max(-4.5, Math.min(4.5, intersectPoint.z));
+                return [x, z];
+            }
+            return null;
+        }
+
+        function checkBallClick(e) {
+            getMousePosition(e);
+            raycaster.setFromCamera(mouse, camera);
+
+            const ballMeshes = Object.values(balls);
+            const intersects = raycaster.intersectObjects(ballMeshes, true);
+
+            return intersects.length > 0;
+        }
+
+        canvas.addEventListener('mousedown', e => {
+            prevMouse = { x: e.clientX, y: e.clientY };
+
+            // Check if clicking on a ball (only when not running)
+            if (!running && checkBallClick(e)) {
+                isDraggingBall = true;
+                canvas.style.cursor = 'grabbing';
+            } else {
+                isRotating = true;
+            }
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (isDraggingBall && !running) {
+                const newPos = getSurfacePosition(e);
+                if (newPos) {
+                    // Move all balls to new position (new starting point)
+                    startPos = newPos;
+                    winner = null;
+                    document.getElementById('winner-overlay').classList.remove('show');
+
+                    Object.entries(optimizers).forEach(([key, opt]) => {
+                        opt.theta = [...newPos];
+                        // Reset optimizer state
+                        if (opt.v) opt.v = key === 'rmsprop' ? [1e-8, 1e-8] : [0, 0];
+                        if (opt.m) opt.m = [0, 0];
+                        opt.step = 0;
+                        opt.converged = false;
+                        opt.diverged = false;
+                        opt.stuck = false;
+                        trails[key] = [[...newPos]];
+                    });
+
+                    // Reset loss history
+                    lossHistory = { sgd: [], momentum: [], rmsprop: [], adam: [] };
+
+                    // Update ball positions visually
+                    Object.entries(balls).forEach(([key, ball]) => {
+                        updateBallPosition(ball, optimizers[key].theta);
+                    });
+                    drawTrails();
+                    updateUI();
+
+                    // Update commentary
+                    let globalMin = [0, 0];
+                    if (currentSurface.type === 'random' && randomSurface) {
+                        globalMin = randomSurface.globalMin;
+                    } else if (currentSurface.globalMin) {
+                        globalMin = currentSurface.globalMin;
+                    }
+                    const dist = Math.sqrt(Math.pow(newPos[0]-globalMin[0], 2) + Math.pow(newPos[1]-globalMin[1], 2));
+                    const startHeight = getHeight(newPos[0], newPos[1]);
+                    document.getElementById('commentary-text').innerHTML =
+                        `<b>📍 New start:</b> (${newPos[0].toFixed(1)}, ${newPos[1].toFixed(1)})<br>` +
+                        `Distance to goal: ${dist.toFixed(1)} | Height: ${startHeight.toFixed(2)}<br>` +
+                        `<i>Starting from different positions = like random weight initialization in real NNs!</i>`;
+                }
+            } else if (isRotating) {
+                rotation.y += (e.clientX - prevMouse.x) * 0.005;
+                rotation.x += (e.clientY - prevMouse.y) * 0.005;
+                rotation.x = Math.max(0.2, Math.min(1.4, rotation.x));
+                prevMouse = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isRotating = false;
+            isDraggingBall = false;
+            canvas.style.cursor = 'grab';
+        });
+
+        // Change cursor when hovering over balls
+        canvas.addEventListener('mousemove', e => {
+            if (!isDraggingBall && !isRotating && !running) {
+                if (checkBallClick(e)) {
+                    canvas.style.cursor = 'grab';
+                } else {
+                    canvas.style.cursor = 'default';
+                }
+            }
+        });
+
+        // Controls
+        document.getElementById('lr-slider').addEventListener('input', e => {
+            baseLr = parseFloat(e.target.value);
+            lr = getScheduledLR(0);  // Update current LR based on schedule
+            document.getElementById('lr-display').textContent = baseLr.toFixed(3);
+            document.getElementById('current-lr-display').textContent = lr.toFixed(3);
+            document.getElementById('shared-lr').textContent = lr.toFixed(3);
+        });
+
+        // LR Schedule descriptions
+        const scheduleDescriptions = {
+            'constant': 'Constant LR throughout training.',
+            'cosine': 'Cosine decay: LR smoothly decreases to 5% by end.',
+            'warm_restarts': `🔥 Fixed restarts: Cosine decay, spike back every ${warmRestartPeriod} steps.`,
+            'sgdr': `🔥 SGDR: Cosine + restarts with INCREASING periods (${sgdrT0}, ${sgdrT0*2}, ${sgdrT0*4}...). Used by FastAI!`
+        };
+
+        // LR Schedule button listeners
+        document.querySelectorAll('.btn-schedule').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.btn-schedule').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                lrSchedule = e.target.dataset.schedule;
+                document.getElementById('lr-schedule-desc').textContent = scheduleDescriptions[lrSchedule];
+
+                // Update current LR display
+                const currentStep = Math.max(...Object.values(optimizers).map(o => o.step));
+                lr = getScheduledLR(currentStep);
+                document.getElementById('current-lr-display').textContent = lr.toFixed(3);
+
+                // Commentary about the schedule change
+                if (lrSchedule === 'warm_restarts') {
+                    document.getElementById('commentary-text').innerHTML =
+                        `<b>🔥 Fixed Warm Restarts!</b><br>` +
+                        `Cosine decay within each cycle, spike back every ${warmRestartPeriod} steps.<br>` +
+                        `<i>Simple periodic restarts - good for escaping local minima.</i>`;
+                } else if (lrSchedule === 'cosine') {
+                    document.getElementById('commentary-text').innerHTML =
+                        `<b>📉 Cosine decay enabled.</b><br>` +
+                        `LR smoothly decreases, allowing fine-grained convergence near the end.<br>` +
+                        `<i>Popular in vision models (ResNet, ViT, etc.)</i>`;
+                } else if (lrSchedule === 'sgdr') {
+                    document.getElementById('commentary-text').innerHTML =
+                        `<b>🔥 SGDR (Original Paper)!</b><br>` +
+                        `Cosine decay + restarts with <b>increasing</b> periods: ${sgdrT0}→${sgdrT0*2}→${sgdrT0*4}...<br>` +
+                        `<i>Longer cycles = more time to converge. Used by FastAI, popular in competitions!</i>`;
+                }
+            });
+        });
+
+        document.getElementById('noise-slider').addEventListener('input', e => {
+            gradientNoise = parseFloat(e.target.value);
+            document.getElementById('noise-display').textContent = gradientNoise.toFixed(2);
+
+            // Update hint based on noise level
+            const hint = document.getElementById('noise-hint');
+            if (gradientNoise === 0) {
+                hint.textContent = 'No noise = exact gradients (full batch)';
+                hint.style.color = '#8b949e';
+            } else if (gradientNoise < 0.3) {
+                hint.textContent = 'Low noise ≈ large batch (stable but can get stuck)';
+                hint.style.color = '#3fb950';
+            } else if (gradientNoise < 0.6) {
+                hint.textContent = 'Medium noise ≈ typical batch (good balance)';
+                hint.style.color = '#ffa657';
+            } else {
+                hint.textContent = 'High noise ≈ small batch (can escape minima!)';
+                hint.style.color = '#f85149';
+            }
+        });
+
+        document.getElementById('beta1-slider').addEventListener('input', e => {
+            beta1 = parseFloat(e.target.value);
+            document.getElementById('beta1-display').textContent = beta1.toFixed(2);
+        });
+
+        document.getElementById('beta2-slider').addEventListener('input', e => {
+            beta2 = parseFloat(e.target.value);
+            document.getElementById('beta2-display').textContent = beta2.toFixed(3);
+        });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            running = !running;
+            const btn = document.getElementById('start-btn');
+            btn.textContent = running ? '⏸ Pause' : '▶ Start Race';
+            btn.classList.toggle('running', running);
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', reset);
+        document.getElementById('random-surface-btn').addEventListener('click', generateRandomSurface);
+        document.getElementById('preset-valley-btn')?.addEventListener('click', () => usePresetSurface(0));
+        document.getElementById('preset-saddle-btn')?.addEventListener('click', () => usePresetSurface(1));
+
+        // Surface parameter sliders - modify surface without regenerating
+        document.getElementById('param1-slider').addEventListener('input', e => {
+            surfaceParam1 = parseFloat(e.target.value);
+            document.getElementById('param1-display').textContent = surfaceParam1.toFixed(1) + '×';
+            createSurface();  // Rebuild surface with new params
+            // Update ball positions to sit on new surface
+            Object.entries(balls).forEach(([key, ball]) => {
+                updateBallPosition(ball, optimizers[key].theta);
+            });
+            drawTrails();
+        });
+
+        document.getElementById('param2-slider').addEventListener('input', e => {
+            surfaceParam2 = parseFloat(e.target.value);
+            document.getElementById('param2-display').textContent = surfaceParam2.toFixed(1) + '×';
+            createSurface();  // Rebuild surface with new params
+            // Update ball positions to sit on new surface
+            Object.entries(balls).forEach(([key, ball]) => {
+                updateBallPosition(ball, optimizers[key].theta);
+            });
+            drawTrails();
+        });
+
+        // Animation loop
+        let lastTime = 0;
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            const radius = 12;
+            camera.position.x = radius * Math.sin(rotation.y) * Math.cos(rotation.x);
+            camera.position.y = radius * Math.sin(rotation.x);
+            camera.position.z = radius * Math.cos(rotation.y) * Math.cos(rotation.x);
+            camera.lookAt(0, 0.5, 0);
+
+            if (running && time - lastTime > stepInterval) {
+                optimizerStep();
+
+                Object.entries(balls).forEach(([key, ball]) => {
+                    if (!optimizers[key].diverged) {
+                        updateBallPosition(ball, optimizers[key].theta);
+                    }
+                });
+
+                drawTrails();
+                updateUI();
+                lastTime = time;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // Initialize with a random surface
+        generateRandomSurface();
+        animate(0);
+    </script>
+</body>
+</html>

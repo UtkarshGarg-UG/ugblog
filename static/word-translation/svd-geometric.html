@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SVD on a shape</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px; box-sizing: border-box;
+    position: relative;
+  }
+  canvas { display: block; width: 100%; max-width: 600px; height: auto; aspect-ratio: 1 / 1; }
+  .hint {
+    position: absolute; top: 22px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #786c5b; transition: color 0.5s ease;
+  }
+  .hint.s1 { color: #c8a838; }
+  .hint.s2 { color: #d4895c; }
+  .hint.s3 { color: #95b078; }
+
+  /* Math readouts overlaid on canvas */
+  .readout {
+    position: absolute; left: 28px; bottom: 28px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 10px; color: #8a7e6d;
+    line-height: 1.45;
+    pointer-events: none;
+  }
+  .readout .row { display: flex; align-items: center; gap: 6px; }
+  .readout .lbl { color: #e8dcc1; font-weight: 600; min-width: 14px; }
+  .readout .mat {
+    display: inline-grid; grid-template-columns: 1fr 1fr;
+    gap: 2px 8px; padding: 2px 6px;
+    border-left: 1px solid #4d4639;
+    border-right: 1px solid #4d4639;
+  }
+  .readout .u   .lbl { color: #95b078; }
+  .readout .s   .lbl { color: #d4895c; }
+  .replay {
+    position: absolute; top: 14px; right: 14px;
+    background: none; border: 1px solid #3a352d; color: #8a7e6d;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; padding: 0; cursor: pointer; z-index: 10;
+    transition: all 0.2s ease;
+  }
+  .replay:hover { border-color: #82a8c3; color: #82a8c3; }
+  .phasenav {
+    position: absolute; bottom: 70px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 7px;
+    z-index: 5;
+  }
+  .phasenav .pip {
+    width: 22px; height: 3px; border-radius: 2px;
+    background: rgba(138, 126, 109, 0.25);
+    cursor: pointer;
+    transition: background 0.3s ease, transform 0.2s ease;
+  }
+  .phasenav .pip:hover { background: rgba(138, 126, 109, 0.55); transform: scaleY(1.5); }
+  .phasenav .pip.active { background: currentColor; }
+  .readout .vt  .lbl { color: #c8a838; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="hint" id="hint">any matrix  M = U Σ Vᵀ</div>
+  <button class="replay" id="replay" title="replay">↻</button>
+  <canvas id="cv"></canvas>
+  <div class="phasenav" id="phasenav"></div>
+  <div class="readout">
+    <div class="row u"><span class="lbl">U</span><span class="mat" id="uMat"></span></div>
+    <div class="row s"><span class="lbl">Σ</span><span class="mat" id="sMat"></span></div>
+    <div class="row vt"><span class="lbl">Vᵀ</span><span class="mat" id="vtMat"></span></div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const hint = document.getElementById('hint');
+const uMatEl  = document.getElementById('uMat');
+const sMatEl  = document.getElementById('sMat');
+const vtMatEl = document.getElementById('vtMat');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+const PAL = {
+  blue:   '#82a8c3',
+  cream:  '#e8dcc1',
+  muted:  '#8a7e6d',
+  faint:  '#5e5648',
+  gold:   '#c8a838',
+  caramel:'#d4895c',
+  sage:   '#95b078',
+  rose:   '#c47a8a',
+  rust:   '#c25c4a',
+  ghost:  'rgba(138, 126, 109, 0.22)',
+};
+
+// Asymmetric arrow shape
+const ARROW = [
+  [-0.65,  0.22], [ 0.05,  0.22], [ 0.05,  0.52],
+  [ 0.72,  0.00], [ 0.05, -0.52], [ 0.05, -0.22], [-0.65, -0.22],
+];
+
+// SVD parameters of the example matrix M = U Σ V^T
+const THETA_V =  35 * Math.PI / 180;   // first principal direction of M (angle of V's first column)
+const THETA_U =  62 * Math.PI / 180;   // angle of U's first column
+const SIG1 = 1.55, SIG2 = 0.55;
+
+function rot(t) { return [[Math.cos(t), -Math.sin(t)], [Math.sin(t), Math.cos(t)]]; }
+function applyM(M, p) { return [M[0][0]*p[0] + M[0][1]*p[1], M[1][0]*p[0] + M[1][1]*p[1]]; }
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
+
+// Timeline (seconds)
+const T_ID_END    = 1.0;
+const T_VT_END    = 2.7;
+const T_HOLD1_END = 3.1;
+const T_SIG_END   = 4.9;
+const T_HOLD2_END = 5.3;
+const T_U_END     = 7.0;
+const T_HOLD3_END = 9.5;
+const T_LOOP      = T_HOLD3_END + 1.2;
+
+let t0 = performance.now();
+
+function getState(t) {
+  let vAmt = 0, sxAmt = 0, syAmt = 0, uAmt = 0;
+  let phase = 'identity';
+
+  if (t < T_ID_END) {
+    phase = 'identity';
+  } else if (t < T_VT_END) {
+    vAmt = easeInOut((t - T_ID_END) / (T_VT_END - T_ID_END));
+    phase = 'vt';
+  } else if (t < T_HOLD1_END) {
+    vAmt = 1; phase = 'vt';
+  } else if (t < T_SIG_END) {
+    vAmt = 1;
+    const u = easeInOut((t - T_HOLD1_END) / (T_SIG_END - T_HOLD1_END));
+    sxAmt = u; syAmt = u;
+    phase = 'sigma';
+  } else if (t < T_HOLD2_END) {
+    vAmt = 1; sxAmt = 1; syAmt = 1;
+    phase = 'sigma';
+  } else if (t < T_U_END) {
+    vAmt = 1; sxAmt = 1; syAmt = 1;
+    uAmt = easeInOut((t - T_HOLD2_END) / (T_U_END - T_HOLD2_END));
+    phase = 'u';
+  } else {
+    vAmt = 1; sxAmt = 1; syAmt = 1; uAmt = 1;
+    phase = 'm';
+  }
+
+  const Vt = rot(-THETA_V * vAmt);
+  const sx = 1 + (SIG1 - 1) * sxAmt;
+  const sy = 1 + (SIG2 - 1) * syAmt;
+  const Ut = rot(THETA_U * uAmt);
+
+  return { Vt, sx, sy, Ut, phase, vAmt, sxAmt, syAmt, uAmt };
+}
+
+function tform(p, st) {
+  let q = applyM(st.Vt, p);
+  q = [q[0] * st.sx, q[1] * st.sy];
+  q = applyM(st.Ut, q);
+  return q;
+}
+
+// Singular vectors v1, v2 start as columns of V in the original frame.
+// V = rot(THETA_V), so v1 starts at angle THETA_V, v2 at angle THETA_V + 90°.
+// Through the SVD pipeline they end at angles THETA_U and THETA_U + 90° (columns of U).
+function singularVec1Pos(st) {
+  // Initial: cos(THETA_V), sin(THETA_V)
+  const v = [Math.cos(THETA_V), Math.sin(THETA_V)];
+  return tform(v, st);
+}
+function singularVec2Pos(st) {
+  const v = [Math.cos(THETA_V + Math.PI / 2), Math.sin(THETA_V + Math.PI / 2)];
+  return tform(v, st);
+}
+
+function drawArrow(x0, y0, x1, y1, color, w, dashed) {
+  ctx.strokeStyle = color; ctx.lineWidth = w;
+  if (dashed) ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  ctx.setLineDash([]);
+  const a = Math.atan2(y1 - y0, x1 - x0);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - 9 * Math.cos(a - 0.36), y1 - 9 * Math.sin(a - 0.36));
+  ctx.lineTo(x1 - 9 * Math.cos(a + 0.36), y1 - 9 * Math.sin(a + 0.36));
+  ctx.closePath(); ctx.fill();
+}
+
+function drawShapePath(points, scale, cx, cy, st) {
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const q = st ? tform(p, st) : p;
+    const px = cx + q[0] * scale, py = cy - q[1] * scale;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.closePath();
+}
+
+function withAlpha(hex, a) {
+  return hex + Math.round(a * 255).toString(16).padStart(2, '0');
+}
+
+function fmt(x) { return (x >= 0 ? ' ' : '') + x.toFixed(2); }
+
+function updateMatrices(st) {
+  const U = st.Ut;
+  const S = [st.sx, st.sy];
+  const Vt = st.Vt;
+
+  uMatEl.innerHTML  = `<span>${fmt(U[0][0])}</span><span>${fmt(U[0][1])}</span><span>${fmt(U[1][0])}</span><span>${fmt(U[1][1])}</span>`;
+  sMatEl.innerHTML  = `<span>${fmt(S[0])}</span><span> 0.00</span><span> 0.00</span><span>${fmt(S[1])}</span>`;
+  vtMatEl.innerHTML = `<span>${fmt(Vt[0][0])}</span><span>${fmt(Vt[0][1])}</span><span>${fmt(Vt[1][0])}</span><span>${fmt(Vt[1][1])}</span>`;
+}
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const scale = Math.min(w, h) * 0.28;
+
+  const tNow = (performance.now() - t0) / 1000;
+  const tClamped = Math.min(tNow, T_LOOP);
+  const t = tClamped;
+  const st = getState(t);
+
+  // Subtle axes
+  ctx.strokeStyle = 'rgba(138, 126, 109, 0.07)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();
+
+  // Unit-circle ghost (gets transformed alongside the arrow to anchor what M does to all of space)
+  const N = 64;
+  ctx.strokeStyle = 'rgba(138, 126, 109, 0.30)';
+  ctx.setLineDash([3, 4]);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const q = tform([Math.cos(a), Math.sin(a)], st);
+    const px = cx + q[0] * scale, py = cy - q[1] * scale;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Ghost original arrow (dashed)
+  ctx.strokeStyle = PAL.ghost;
+  ctx.setLineDash([4, 4]);
+  ctx.lineWidth = 1;
+  drawShapePath(ARROW, scale, cx, cy, null);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Current shape color by phase
+  let baseColor;
+  if (st.phase === 'identity')   baseColor = PAL.blue;
+  else if (st.phase === 'vt')    baseColor = PAL.gold;
+  else if (st.phase === 'sigma') baseColor = PAL.caramel;
+  else                            baseColor = PAL.sage;
+
+  drawShapePath(ARROW, scale, cx, cy, st);
+  ctx.fillStyle = withAlpha(baseColor, 0.20);
+  ctx.fill();
+  ctx.strokeStyle = baseColor;
+  ctx.lineWidth = 2.4;
+  ctx.stroke();
+
+  // Singular vectors v1, v2 — these are M's natural axes, drawn from origin
+  const v1 = singularVec1Pos(st);
+  const v2 = singularVec2Pos(st);
+  drawArrow(cx, cy, cx + v1[0] * scale, cy - v1[1] * scale, PAL.rose, 2.0, false);
+  drawArrow(cx, cy, cx + v2[0] * scale, cy - v2[1] * scale, PAL.rust, 2.0, false);
+
+  // Label the singular vector lengths during/after stretch
+  if (st.sxAmt > 0.05) {
+    const len1 = 1 + (SIG1 - 1) * st.sxAmt;
+    const len2 = 1 + (SIG2 - 1) * st.syAmt;
+    const v1x = cx + v1[0] * scale, v1y = cy - v1[1] * scale;
+    const v2x = cx + v2[0] * scale, v2y = cy - v2[1] * scale;
+    ctx.fillStyle = PAL.rose;
+    ctx.font = '11px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('σ₁=' + len1.toFixed(2), v1x + 8, v1y - 6);
+    ctx.fillStyle = PAL.rust;
+    ctx.fillText('σ₂=' + len2.toFixed(2), v2x + 8, v2y - 6);
+  }
+
+  // Hint
+  let text, cls;
+  if (st.phase === 'identity')   { text = 'original shape';          cls = ''; }
+  else if (st.phase === 'vt')    { text = 'step 1 — align with Vᵀ';  cls = 's1'; }
+  else if (st.phase === 'sigma') { text = 'step 2 — stretch by Σ';   cls = 's2'; }
+  else if (st.phase === 'u')     { text = 'step 3 — rotate by U';    cls = 's3'; }
+  else                            { text = 'M = U Σ Vᵀ';             cls = 's3'; }
+
+  if (hint.textContent !== text) hint.textContent = text;
+  hint.className = 'hint ' + cls;
+
+  updateMatrices(st);
+}
+
+let rafId = 0;
+function loop() {
+  draw();
+  const tNow = (performance.now() - t0) / 1000;
+  if (tNow < T_LOOP + 0.5) {
+    rafId = requestAnimationFrame(loop);
+  } else {
+    rafId = 0;
+  }
+}
+
+function start(jumpTo) {
+  t0 = performance.now() - (jumpTo || 0) * 1000;
+  if (!rafId) rafId = requestAnimationFrame(loop);
+}
+
+// Clickable phase nav: 4 pips for identity/Vᵀ/Σ/U
+const PHASE_STARTS = [0, T_ID_END + 0.05, T_HOLD1_END + 0.05, T_HOLD2_END + 0.05];
+const PHASE_LABELS = ['identity', 'Vᵀ', 'Σ', 'U'];
+const PHASE_COLORS = ['#82a8c3', '#c8a838', '#d4895c', '#95b078'];
+const phasenavEl = document.getElementById('phasenav');
+PHASE_STARTS.forEach((t, i) => {
+  const pip = document.createElement('div');
+  pip.className = 'pip';
+  pip.title = PHASE_LABELS[i];
+  pip.style.color = PHASE_COLORS[i];
+  pip.addEventListener('click', () => start(t));
+  phasenavEl.appendChild(pip);
+});
+const phasePips = phasenavEl.querySelectorAll('.pip');
+
+function updatePhasePips() {
+  const t = (performance.now() - t0) / 1000;
+  let active = 0;
+  for (let i = 0; i < PHASE_STARTS.length; i++) {
+    if (t >= PHASE_STARTS[i]) active = i;
+  }
+  phasePips.forEach((p, i) => p.classList.toggle('active', i === active));
+}
+setInterval(updatePhasePips, 100);
+
+document.getElementById('replay').addEventListener('click', () => start(0));
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') start();
+});
+
+fit();
+window.addEventListener('resize', fit);
+start();
+</script>
+</body>
+</html>

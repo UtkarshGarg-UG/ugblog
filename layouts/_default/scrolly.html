@@ -1,0 +1,317 @@
+{{- define "main" }}
+
+<style>
+  /* Container expands beyond PaperMod's normal max-width */
+  main.main {
+    max-width: 1480px !important;
+    padding: 0 24px;
+  }
+  .scrolly-article {
+    width: 100%;
+    padding: 36px 0 80px;
+  }
+  .scrolly-header {
+    max-width: 720px;
+    margin: 0 auto 40px;
+    text-align: left;
+  }
+  .scrolly-header h1 {
+    font-size: clamp(1.6rem, 2.2vw, 2.2rem);
+    line-height: 1.2;
+    margin: 0 0 12px;
+  }
+  .scrolly-header .meta {
+    color: #8a7e6d;
+    font-size: 0.88rem;
+    letter-spacing: 0.02em;
+  }
+  .scrolly-header .desc {
+    margin-top: 16px;
+    color: var(--secondary, #786c5b);
+    font-size: 1.02rem;
+    line-height: 1.55;
+  }
+
+  /* Two-column body */
+  .scrolly-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+  }
+
+  /* Left column: text */
+  .scrolly-text {
+    min-width: 0;
+    font-size: 1.02rem;
+    line-height: 1.72;
+  }
+  .scrolly-text > section[data-vis] {
+    padding: 18vh 0;
+    border: none;
+    scroll-margin-top: 80px;
+  }
+  .scrolly-text > section[data-vis]:first-child { padding-top: 4vh; }
+  .scrolly-text > section[data-vis]:last-child  { padding-bottom: 30vh; }
+  .scrolly-text h2 {
+    font-size: 1.4rem;
+    margin: 0 0 20px;
+    line-height: 1.25;
+  }
+  .scrolly-text h3 {
+    font-size: 1.08rem;
+    margin: 28px 0 12px;
+  }
+  .scrolly-text p { margin: 0 0 18px; }
+  .scrolly-text table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 18px 0;
+    font-size: 0.92rem;
+  }
+  .scrolly-text th, .scrolly-text td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(138, 126, 109, 0.2);
+    text-align: left;
+  }
+  .scrolly-text th { color: var(--secondary, #786c5b); font-weight: 600; }
+  .scrolly-text ul, .scrolly-text ol { margin: 0 0 18px 22px; }
+  .scrolly-text li { margin: 6px 0; }
+  .scrolly-text code {
+    background: rgba(138, 126, 109, 0.12);
+    padding: 1px 5px; border-radius: 4px;
+    font-size: 0.92em;
+  }
+  /* In-line phrase emphasis for the standout title fragment. Uses a marker-style
+     underline + gold weight so the phrase carries through inside links too. */
+  .scrolly-text .standout {
+    color: #c8a838;
+    font-weight: 700;
+    letter-spacing: 0.015em;
+    background: linear-gradient(transparent 62%, rgba(200, 168, 56, 0.22) 62%);
+    padding: 0 2px;
+  }
+  .scrolly-text a .standout { color: #c8a838; }
+  .scrolly-text a:hover .standout { color: #e0bd45; }
+
+  /* Academic citation styling: underline the link so it reads as a reference,
+     distinct from regular body links. */
+  .scrolly-text a.cite {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+    text-decoration-color: rgba(138, 126, 109, 0.55);
+  }
+  .scrolly-text a.cite:hover {
+    text-decoration-color: #82a8c3;
+  }
+
+  /* Right column: sticky visual stage. Capped so visuals with compact layouts
+     (e.g. the linguistic-mismatch one) don't show a large vertical blank. */
+  .scrolly-vis {
+    position: sticky;
+    top: 70px;
+    height: calc(100vh - 90px);
+    max-height: 660px;
+    min-height: 480px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vis-stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #1a1813;
+    border: 1px solid rgba(138, 126, 109, 0.18);
+  }
+  .vis-item {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.55s ease;
+    pointer-events: none;
+  }
+  .vis-item.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .vis-item iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+
+  /* Section progress indicator. Anchored to the article's left edge so it never
+     drifts into the text column. Hidden when the viewport is too narrow to fit
+     the nav outside the article. */
+  .scrolly-nav {
+    position: fixed;
+    left: calc((100vw - 1480px) / 2 - 32px);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 10;
+  }
+  .scrolly-nav .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(138, 126, 109, 0.35);
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .scrolly-nav .dot.active {
+    background: #82a8c3;
+    transform: scale(1.6);
+  }
+
+  /* Below this width, there isn't enough margin outside the article to place the
+     dots without them overlapping the text. */
+  @media (max-width: 1560px) {
+    .scrolly-nav { display: none; }
+  }
+
+  /* Mobile: stack columns */
+  @media (max-width: 920px) {
+    .scrolly-grid {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+    .scrolly-vis {
+      position: relative;
+      top: 0;
+      height: 440px;
+      margin-bottom: 24px;
+    }
+    .scrolly-text > section[data-vis] {
+      padding: 30px 0;
+    }
+  }
+</style>
+
+<article class="scrolly-article">
+  <header class="scrolly-header">
+    <h1>{{ .Title }}</h1>
+    <div class="meta">
+      {{ .Date.Format "January 2, 2006" }}{{ with .Params.tags }} · {{ delimit . ", " }}{{ end }}
+    </div>
+    {{ with .Params.summary }}<p class="desc">{{ . }}</p>{{ end }}
+  </header>
+
+  <div class="scrolly-grid">
+    <div class="scrolly-text" id="scrolly-text">
+      {{ .Content }}
+    </div>
+
+    <aside class="scrolly-vis" aria-hidden="true">
+      <div class="vis-stage" id="vis-stage">
+        <div class="vis-item active" data-vis-id="hero">
+          <iframe src="/word-translation/hero-rotation.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="directions">
+          <iframe src="/word-translation/semantic-directions.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="alignment">
+          <iframe src="/word-translation/geometric-alignment.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="mismatch">
+          <iframe src="/word-translation/linguistic-mismatch.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="tree">
+          <iframe src="/word-translation/language-tree.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="procrustes-setup">
+          <iframe src="/word-translation/procrustes-setup.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="svd">
+          <iframe src="/word-translation/svd-geometric.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="procrustes-svd">
+          <iframe src="/word-translation/procrustes-svd.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="adversarial">
+          <iframe src="/word-translation/adversarial-training.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="csls">
+          <iframe src="/word-translation/csls-hubness.html" loading="lazy"></iframe>
+        </div>
+        <div class="vis-item" data-vis-id="closing">
+          <iframe src="/word-translation/closing-convergence.html" loading="lazy"></iframe>
+        </div>
+      </div>
+    </aside>
+  </div>
+</article>
+
+<nav class="scrolly-nav" id="scrolly-nav" aria-hidden="true"></nav>
+
+<script>
+(function () {
+  const textRoot = document.getElementById('scrolly-text');
+  if (!textRoot) return;
+  const sections = textRoot.querySelectorAll('section[data-vis]');
+  const visItems = document.querySelectorAll('.vis-item');
+  const navRoot = document.getElementById('scrolly-nav');
+
+  // build dots
+  sections.forEach((s, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'dot' + (i === 0 ? ' active' : '');
+    dot.dataset.idx = i;
+    dot.addEventListener('click', () => {
+      s.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    navRoot.appendChild(dot);
+  });
+
+  let lastActiveVisId = null;
+  function activateIdx(idx) {
+    const target = sections[idx];
+    if (!target) return;
+    const visId = target.dataset.vis;
+    visItems.forEach(v => v.classList.toggle('active', v.dataset.visId === visId));
+    navRoot.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+    if (visId !== lastActiveVisId) {
+      lastActiveVisId = visId;
+      const activeItem = document.querySelector('.vis-item[data-vis-id="' + visId + '"]');
+      const iframe = activeItem && activeItem.querySelector('iframe');
+      if (iframe && iframe.contentWindow) {
+        try { iframe.contentWindow.postMessage({ type: 'restart' }, '*'); } catch (e) {}
+      }
+    }
+  }
+
+  // Pick the section closest to a horizontal trigger line at 40% of viewport
+  function selectActive() {
+    const triggerY = window.innerHeight * 0.4;
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    sections.forEach((s, i) => {
+      const r = s.getBoundingClientRect();
+      const center = r.top + r.height / 2;
+      const dist = Math.abs(center - triggerY);
+      if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    });
+    activateIdx(bestIdx);
+  }
+
+  let raf = 0;
+  function onScroll() {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      selectActive();
+    });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  selectActive();
+})();
+</script>
+
+{{- end }}

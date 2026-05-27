@@ -63,7 +63,7 @@
   button:active { transform: translateY(1px); }
   .panel {
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: 1fr 260px;
     gap: 12px;
   }
   #chart {
@@ -102,6 +102,20 @@
     font-size: 12px; color: var(--muted);
     text-align: right;
   }
+  .caption {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    padding: 8px 4px 0;
+  }
+  .caption b { color: var(--fg); font-weight: 600; }
+  .caption .sw {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin: 0 4px 2px 0;
+  }
   @media (max-width: 900px) {
     .panel { grid-template-columns: 1fr; }
     #chart { height: 450px; }
@@ -131,7 +145,19 @@
   </div>
 
   <div class="panel">
-    <div id="chart"></div>
+    <div>
+      <div id="chart"></div>
+      <div class="caption">
+        <b>Top — Number space (1…N).</b>
+        <span class="sw" style="background:#A7F3D0"></span>candidates still possible,
+        <span class="sw" style="background:#E5E7EB"></span>ruled out,
+        <span class="sw" style="background:#10B981"></span>target (when found).
+        The dashed orange line marks the current question's split point.
+        <br />
+        <b>Bottom — Cost of search.</b>
+        Green line = number of yes/no questions asked so far; red dashed line = the theoretical minimum, ⌈log₂ N⌉ bits. Each question halves the candidate set, so the green line should never exceed the red one.
+      </div>
+    </div>
     <div class="info" id="infoPanel">
       <h3>Binary Questions</h3>
       <div class="k" id="titleText">Guessing a Number</div>
@@ -249,7 +275,7 @@
           height: 480,
           margin: { l: 50, r: 10, t: 30, b: 40 },
     
-          xaxis:  { title: 'Value', range: [0.5, N + 0.5], dtick: 1 },
+          xaxis:  { title: 'Value', range: [0.5, N + 0.5], dtick: Math.max(1, Math.ceil(N / 20)) },
           yaxis:  { visible: false, range: [0, 1.1] },
     
           xaxis2: { title: 'Bits (questions)', range: [-0.1, Math.max(cap, steps.length) + 0.1] },

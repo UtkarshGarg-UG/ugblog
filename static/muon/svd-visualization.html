@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVD Visualization: Rotate → Stretch → Rotate</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #58a6ff;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 25px;
+        }
+
+        .steps {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .step {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .step h3 {
+            font-size: 0.85rem;
+            color: #8b949e;
+            margin-bottom: 5px;
+        }
+
+        .step .formula {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #7ee787;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+
+        .arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: #484f58;
+            padding: 0 5px;
+        }
+
+        canvas {
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .controls {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group h4 {
+            color: #58a6ff;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        label {
+            color: #8b949e;
+            min-width: 100px;
+            font-size: 0.9rem;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            max-width: 200px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            min-width: 50px;
+        }
+
+        .matrix-row {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .matrix-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .matrix-box h4 {
+            color: #8b949e;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+        }
+
+        .matrix-content {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+        }
+
+        .matrix-content .row {
+            margin: 3px 0;
+        }
+
+        .matrix-content .entry {
+            display: inline-block;
+            width: 55px;
+            color: #7ee787;
+        }
+
+        .equals {
+            font-size: 1.2rem;
+            color: #8b949e;
+            display: flex;
+            align-items: center;
+        }
+
+        .info-panel {
+            background: rgba(56, 139, 253, 0.1);
+            border: 1px solid rgba(56, 139, 253, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .info-panel h4 {
+            color: #58a6ff;
+            margin-bottom: 10px;
+        }
+
+        .info-panel p {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #c9d1d9;
+        }
+
+        .sigma {
+            color: #f0883e;
+        }
+
+        .animate-btn {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .animate-btn:hover {
+            background: #2ea043;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>SVD: The Anatomy of a Matrix</h2>
+        <p class="subtitle">Every matrix = Rotate (V<sup>T</sup>) → Stretch (Σ) → Rotate (U)</p>
+
+        <div class="steps">
+            <div class="step">
+                <h3>Original</h3>
+                <div class="formula">x</div>
+                <canvas id="c0" width="150" height="150"></canvas>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="step">
+                <h3>Step 1: V<sup>T</sup></h3>
+                <div class="formula">V<sup>T</sup>x</div>
+                <canvas id="c1" width="150" height="150"></canvas>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="step">
+                <h3>Step 2: Σ</h3>
+                <div class="formula">ΣV<sup>T</sup>x</div>
+                <canvas id="c2" width="150" height="150"></canvas>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="step">
+                <h3>Step 3: U</h3>
+                <div class="formula">UΣV<sup>T</sup>x = Ax</div>
+                <canvas id="c3" width="150" height="150"></canvas>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <h4>Singular Values (Stretch Factors)</h4>
+                <div class="control-row">
+                    <label>σ₁ (primary):</label>
+                    <input type="range" id="s1" min="0.1" max="3" step="0.1" value="2">
+                    <span class="value" id="s1-val">2.0</span>
+                </div>
+                <div class="control-row">
+                    <label>σ₂ (secondary):</label>
+                    <input type="range" id="s2" min="0.1" max="3" step="0.1" value="0.5">
+                    <span class="value" id="s2-val">0.5</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h4>Rotation Angles</h4>
+                <div class="control-row">
+                    <label>V rotation:</label>
+                    <input type="range" id="thetaV" min="0" max="360" step="5" value="30">
+                    <span class="value" id="thetaV-val">30°</span>
+                </div>
+                <div class="control-row">
+                    <label>U rotation:</label>
+                    <input type="range" id="thetaU" min="0" max="360" step="5" value="45">
+                    <span class="value" id="thetaU-val">45°</span>
+                </div>
+            </div>
+
+            <button class="animate-btn" onclick="toggleAnimation()">▶ Animate</button>
+        </div>
+
+        <div class="matrix-row">
+            <div class="matrix-box">
+                <h4>A = UΣV<sup>T</sup></h4>
+                <div class="matrix-content" id="matrixA">
+                    <div class="row">[<span class="entry">0.00</span><span class="entry">0.00</span>]</div>
+                    <div class="row">[<span class="entry">0.00</span><span class="entry">0.00</span>]</div>
+                </div>
+            </div>
+
+            <div class="equals">=</div>
+
+            <div class="matrix-box">
+                <h4>U</h4>
+                <div class="matrix-content" id="matrixU">
+                    <div class="row">[<span class="entry">0.00</span><span class="entry">0.00</span>]</div>
+                    <div class="row">[<span class="entry">0.00</span><span class="entry">0.00</span>]</div>
+                </div>
+            </div>
+
+            <div class="matrix-box">
+                <h4>Σ</h4>
+                <div class="matrix-content" id="matrixS">
+                    <div class="row">[<span class="entry sigma">0.00</span><span class="entry">0.00</span>]</div>
+                    <div class="row">[<span class="entry">0.00</span><span class="entry sigma">0.00</span>]</div>
+                </div>
+            </div>
+
+            <div class="matrix-box">
+                <h4>V<sup>T</sup></h4>
+                <div class="matrix-content" id="matrixVT">
+                    <div class="row">[<span class="entry">0.00</span><span class="entry">0.00</span>]</div>
+                    <div class="row">[<span class="entry">0.00</span><span class="entry">0.00</span>]</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <h4>What's Happening</h4>
+            <p id="info">
+                <strong>Condition number:</strong> κ = σ₁/σ₂ = <span class="sigma">4.0</span><br><br>
+                The matrix stretches space <span class="sigma">4×</span> more in one direction than another.
+                This is why gradient descent struggles — the same learning rate can't work well for both directions!
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let s1 = 2, s2 = 0.5;
+        let thetaV = 30, thetaU = 45;
+        let animating = false;
+        let animationId = null;
+
+        const canvases = [0, 1, 2, 3].map(i => document.getElementById('c' + i));
+        const ctxs = canvases.map(c => c.getContext('2d'));
+
+        function rotationMatrix(theta) {
+            const r = theta * Math.PI / 180;
+            return [
+                [Math.cos(r), -Math.sin(r)],
+                [Math.sin(r), Math.cos(r)]
+            ];
+        }
+
+        function matMul(A, B) {
+            return [
+                [A[0][0] * B[0][0] + A[0][1] * B[1][0], A[0][0] * B[0][1] + A[0][1] * B[1][1]],
+                [A[1][0] * B[0][0] + A[1][1] * B[1][0], A[1][0] * B[0][1] + A[1][1] * B[1][1]]
+            ];
+        }
+
+        function transpose(A) {
+            return [[A[0][0], A[1][0]], [A[0][1], A[1][1]]];
+        }
+
+        function applyMatrix(M, x, y) {
+            return [
+                M[0][0] * x + M[0][1] * y,
+                M[1][0] * x + M[1][1] * y
+            ];
+        }
+
+        function getTransformFunctions() {
+            const U = rotationMatrix(thetaU);
+            const V = rotationMatrix(thetaV);
+            const VT = transpose(V);
+            const Sigma = [[s1, 0], [0, s2]];
+
+            return [
+                (x, y) => [x, y],  // Original
+                (x, y) => applyMatrix(VT, x, y),  // V^T
+                (x, y) => applyMatrix(Sigma, ...applyMatrix(VT, x, y)),  // Sigma V^T
+                (x, y) => applyMatrix(U, ...applyMatrix(Sigma, ...applyMatrix(VT, x, y)))  // U Sigma V^T
+            ];
+        }
+
+        function drawCanvas(ctx, transformFn, scale = 35) {
+            const w = ctx.canvas.width;
+            const h = ctx.canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Grid
+            ctx.strokeStyle = '#21262d';
+            ctx.lineWidth = 0.5;
+            for (let i = -2; i <= 2; i++) {
+                ctx.beginPath();
+                for (let t = -2; t <= 2; t += 0.1) {
+                    let [x, y] = transformFn(i, t);
+                    if (t === -2) ctx.moveTo(cx + x * scale, cy - y * scale);
+                    else ctx.lineTo(cx + x * scale, cy - y * scale);
+                }
+                ctx.stroke();
+
+                ctx.beginPath();
+                for (let t = -2; t <= 2; t += 0.1) {
+                    let [x, y] = transformFn(t, i);
+                    if (t === -2) ctx.moveTo(cx + x * scale, cy - y * scale);
+                    else ctx.lineTo(cx + x * scale, cy - y * scale);
+                }
+                ctx.stroke();
+            }
+
+            // Unit circle
+            ctx.strokeStyle = '#58a6ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let theta = 0; theta <= 2 * Math.PI + 0.1; theta += 0.05) {
+                let [x, y] = transformFn(Math.cos(theta), Math.sin(theta));
+                if (theta === 0) ctx.moveTo(cx + x * scale, cy - y * scale);
+                else ctx.lineTo(cx + x * scale, cy - y * scale);
+            }
+            ctx.stroke();
+
+            // Basis vectors
+            ctx.lineWidth = 2;
+
+            // e1 (red)
+            ctx.strokeStyle = '#f85149';
+            ctx.beginPath();
+            let [ex, ey] = transformFn(1, 0);
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + ex * scale, cy - ey * scale);
+            ctx.stroke();
+
+            // e2 (green)
+            ctx.strokeStyle = '#3fb950';
+            ctx.beginPath();
+            [ex, ey] = transformFn(0, 1);
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + ex * scale, cy - ey * scale);
+            ctx.stroke();
+        }
+
+        function updateMatrixDisplays() {
+            const U = rotationMatrix(thetaU);
+            const V = rotationMatrix(thetaV);
+            const VT = transpose(V);
+            const Sigma = [[s1, 0], [0, s2]];
+            const A = matMul(U, matMul(Sigma, VT));
+
+            function setMatrix(id, M) {
+                const el = document.getElementById(id);
+                const entries = el.querySelectorAll('.entry');
+                entries[0].textContent = M[0][0].toFixed(2);
+                entries[1].textContent = M[0][1].toFixed(2);
+                entries[2].textContent = M[1][0].toFixed(2);
+                entries[3].textContent = M[1][1].toFixed(2);
+            }
+
+            setMatrix('matrixA', A);
+            setMatrix('matrixU', U);
+            setMatrix('matrixS', Sigma);
+            setMatrix('matrixVT', VT);
+
+            const cond = (s2 > 0.001) ? (s1 / s2).toFixed(1) : '∞';
+            document.getElementById('info').innerHTML = `
+                <strong>Condition number:</strong> κ = σ₁/σ₂ = <span class="sigma">${cond}</span><br><br>
+                The matrix stretches space <span class="sigma">${cond}×</span> more in one direction than another.
+                ${parseFloat(cond) > 5 ? "This high condition number makes optimization very difficult!" : "A reasonable condition number."}
+            `;
+        }
+
+        function draw() {
+            const transforms = getTransformFunctions();
+            transforms.forEach((fn, i) => drawCanvas(ctxs[i], fn));
+            updateMatrixDisplays();
+        }
+
+        function toggleAnimation() {
+            animating = !animating;
+            document.querySelector('.animate-btn').textContent = animating ? '⏸ Pause' : '▶ Animate';
+            if (animating) animate();
+            else if (animationId) cancelAnimationFrame(animationId);
+        }
+
+        function animate() {
+            if (!animating) return;
+            thetaV = (thetaV + 0.5) % 360;
+            thetaU = (thetaU + 0.3) % 360;
+            document.getElementById('thetaV').value = thetaV;
+            document.getElementById('thetaU').value = thetaU;
+            document.getElementById('thetaV-val').textContent = Math.round(thetaV) + '°';
+            document.getElementById('thetaU-val').textContent = Math.round(thetaU) + '°';
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Event listeners - enforce σ₁ ≥ σ₂ (singular values are ordered by convention)
+        document.getElementById('s1').addEventListener('input', e => {
+            s1 = parseFloat(e.target.value);
+            // σ₂ cannot exceed σ₁
+            s2 = Math.min(s2, s1);
+            document.getElementById('s2').value = s2;
+            document.getElementById('s2-val').textContent = s2.toFixed(1);
+            document.getElementById('s1-val').textContent = s1.toFixed(1);
+            // Update s2 slider max to current s1
+            document.getElementById('s2').max = s1;
+            draw();
+        });
+
+        document.getElementById('s2').addEventListener('input', e => {
+            s2 = parseFloat(e.target.value);
+            // Clamp s2 to not exceed s1
+            s2 = Math.min(s2, s1);
+            document.getElementById('s2').value = s2;
+            document.getElementById('s2-val').textContent = s2.toFixed(1);
+            draw();
+        });
+
+        document.getElementById('thetaV').addEventListener('input', e => {
+            thetaV = parseFloat(e.target.value);
+            document.getElementById('thetaV-val').textContent = Math.round(thetaV) + '°';
+            draw();
+        });
+
+        document.getElementById('thetaU').addEventListener('input', e => {
+            thetaU = parseFloat(e.target.value);
+            document.getElementById('thetaU-val').textContent = Math.round(thetaU) + '°';
+            draw();
+        });
+
+        draw();
+    </script>
+</body>
+</html>

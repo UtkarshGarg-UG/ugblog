@@ -1,0 +1,123 @@
+/* Side Note / Popup Styles */
+.sidenote-wrapper {
+  position: relative;
+  display: inline;
+}
+
+.sidenote-trigger {
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  transition: all 0.2s ease;
+}
+
+.sidenote-trigger:hover {
+  color: var(--primary);
+  opacity: 0.8;
+}
+
+.sidenote-popup {
+  display: none;
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 400px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--entry);
+  border: 2px solid var(--primary);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: slideIn 0.3s ease;
+}
+
+.sidenote-popup.active {
+  display: block;
+}
+
+.sidenote-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 28px;
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: bold;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.sidenote-close:hover {
+  transform: scale(1.2);
+}
+
+.sidenote-content {
+  margin-top: 8px;
+  line-height: 1.6;
+  color: var(--content);
+}
+
+.sidenote-content h4 {
+  margin-top: 0;
+  color: var(--primary);
+}
+
+.sidenote-content code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.sidenote-content pre {
+  background: var(--code-bg);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .sidenote-popup {
+    position: fixed;
+    right: 10px;
+    left: 10px;
+    top: 50%;
+    max-width: none;
+    width: calc(100% - 20px);
+  }
+}
+
+/* Overlay background when popup is active */
+.sidenote-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+.sidenote-overlay.active {
+  display: block;
+}

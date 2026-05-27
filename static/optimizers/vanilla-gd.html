@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Learning Rate Dilemma</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 80px);
+        }
+
+        .canvas-area {
+            flex: 1;
+            position: relative;
+        }
+
+        #three-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .legend-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(13, 17, 23, 0.95);
+            border-radius: 10px;
+            padding: 12px 16px;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .legend-item.too-low {
+            border-color: #3fb950;
+        }
+
+        .legend-item.optimal {
+            border-color: #58a6ff;
+        }
+
+        .legend-item.too-high {
+            border-color: #f85149;
+        }
+
+        .legend-item.diverged {
+            animation: shake 0.5s infinite;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-3px); }
+            75% { transform: translateX(3px); }
+        }
+
+        .legend-ball {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        .legend-ball.green { background: #3fb950; color: #3fb950; }
+        .legend-ball.blue { background: #58a6ff; color: #58a6ff; }
+        .legend-ball.red { background: #f85149; color: #f85149; }
+
+        .legend-info {
+            flex: 1;
+        }
+
+        .legend-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 2px;
+        }
+
+        .legend-item.too-low .legend-title { color: #3fb950; }
+        .legend-item.optimal .legend-title { color: #58a6ff; }
+        .legend-item.too-high .legend-title { color: #f85149; }
+
+        .legend-lr {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.75rem;
+            color: #8b949e;
+        }
+
+        .legend-status {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+
+        .status-crawling {
+            background: rgba(63, 185, 80, 0.2);
+            color: #3fb950;
+        }
+
+        .status-good {
+            background: rgba(88, 166, 255, 0.2);
+            color: #58a6ff;
+        }
+
+        .status-oscillating {
+            background: rgba(248, 81, 73, 0.2);
+            color: #f85149;
+            animation: pulse 0.5s infinite;
+        }
+
+        .status-diverged {
+            background: #f85149;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .insight-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(13, 17, 23, 0.95);
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .insight-icon {
+            font-size: 2rem;
+        }
+
+        .insight-text {
+            flex: 1;
+        }
+
+        .insight-text h4 {
+            color: #f0883e;
+            font-size: 0.9rem;
+            margin-bottom: 4px;
+        }
+
+        .insight-text p {
+            font-size: 0.8rem;
+            color: #8b949e;
+            line-height: 1.4;
+        }
+
+        .step-counter {
+            text-align: right;
+        }
+
+        .step-counter .label {
+            font-size: 0.7rem;
+            color: #8b949e;
+        }
+
+        .step-counter .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1.5rem;
+            color: #58a6ff;
+        }
+
+        .controls-bar {
+            height: 80px;
+            background: #161b22;
+            border-top: 1px solid #30363d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            padding: 0 30px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .control-label {
+            font-size: 0.85rem;
+            color: #8b949e;
+        }
+
+        .control-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            font-size: 0.9rem;
+            min-width: 40px;
+        }
+
+        input[type="range"] {
+            width: 120px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #238636;
+            color: #fff;
+        }
+
+        .btn-primary:hover { background: #2ea043; }
+        .btn-primary.running { background: #f85149; }
+
+        .btn-secondary {
+            background: #30363d;
+            color: #c9d1d9;
+        }
+
+        .btn-secondary:hover { background: #3c444d; }
+
+        .formula-badge {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.9rem;
+            color: #7ee787;
+        }
+
+        .drag-hint {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(13, 17, 23, 0.8);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 0.75rem;
+            color: #8b949e;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="canvas-area">
+            <canvas id="three-canvas"></canvas>
+
+            <div class="legend-overlay">
+                <div class="legend-item too-low" id="legend-low">
+                    <div class="legend-ball green"></div>
+                    <div class="legend-info">
+                        <div class="legend-title">Too Low</div>
+                        <div class="legend-lr">η = <span id="lr-low">0.005</span></div>
+                    </div>
+                    <div class="legend-status status-crawling" id="status-low">Crawling...</div>
+                </div>
+
+                <div class="legend-item optimal" id="legend-mid">
+                    <div class="legend-ball blue"></div>
+                    <div class="legend-info">
+                        <div class="legend-title">Medium</div>
+                        <div class="legend-lr">η = <span id="lr-mid">0.030</span></div>
+                    </div>
+                    <div class="legend-status status-good" id="status-mid">Compromising</div>
+                </div>
+
+                <div class="legend-item too-high" id="legend-high">
+                    <div class="legend-ball red"></div>
+                    <div class="legend-info">
+                        <div class="legend-title">Too High</div>
+                        <div class="legend-lr">η = <span id="lr-high">0.080</span></div>
+                    </div>
+                    <div class="legend-status status-oscillating" id="status-high">Oscillating!</div>
+                </div>
+            </div>
+
+            <div class="insight-overlay">
+                <div class="insight-icon">💡</div>
+                <div class="insight-text">
+                    <h4>The Impossible Dilemma</h4>
+                    <p id="insight-message">Watch how <span style="color:#3fb950">green</span> is stable but slow, while <span style="color:#f85149">red</span> oscillates wildly. No single learning rate works for both the steep and flat directions!</p>
+                </div>
+                <div class="step-counter">
+                    <div class="label">Step</div>
+                    <div class="value" id="step-count">0</div>
+                </div>
+            </div>
+
+            <div class="drag-hint">🖱️ Drag to rotate</div>
+        </div>
+    </div>
+
+    <div class="controls-bar">
+        <div class="formula-badge">θ = θ - η · ∇L</div>
+
+        <div class="control-group">
+            <span class="control-label">Valley Stretch</span>
+            <input type="range" id="stretch-slider" min="2" max="25" step="0.5" value="12">
+            <span class="control-value" id="stretch-value">12×</span>
+        </div>
+
+        <div class="control-group">
+            <span class="control-label">Speed</span>
+            <input type="range" id="speed-slider" min="20" max="200" step="10" value="80">
+        </div>
+
+        <div class="button-group">
+            <button class="btn-primary" id="start-btn">▶ Start Race</button>
+            <button class="btn-secondary" id="reset-btn">↺ Reset</button>
+        </div>
+    </div>
+
+    <script>
+        // Three.js setup
+        const container = document.querySelector('.canvas-area');
+        const canvas = document.getElementById('three-canvas');
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0d1117);
+
+        const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(10, 12, 10);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        // Lights
+        scene.add(new THREE.AmbientLight(0x404040, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // State
+        let stretchFactor = 12;
+        const lrLow = 0.005;
+        const lrMid = 0.030;
+        const lrHigh = 0.080;
+
+        const startPos = [3.5, 3];
+        let states = [
+            { theta: [...startPos], trajectory: [], color: 0x3fb950, lr: lrLow },
+            { theta: [...startPos], trajectory: [], color: 0x58a6ff, lr: lrMid },
+            { theta: [...startPos], trajectory: [], color: 0xf85149, lr: lrHigh }
+        ];
+
+        let running = false;
+        let stepCount = 0;
+        let stepInterval = 80;
+
+        // Meshes
+        let surface, balls = [], trails = [], gradientArrows = [];
+
+        function createSurface() {
+            if (surface) {
+                scene.remove(surface);
+                scene.children = scene.children.filter(c => c.name !== 'wireframe');
+            }
+
+            const geometry = new THREE.PlaneGeometry(10, 10, 80, 80);
+            const positions = geometry.attributes.position.array;
+
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i];
+                const z = positions[i + 1];
+                positions[i + 2] = loss([x, z]) * 0.15;
+            }
+            geometry.computeVertexNormals();
+
+            // Height-based coloring
+            const colors = [];
+            for (let i = 0; i < positions.length; i += 3) {
+                const h = positions[i + 2];
+                const t = Math.min(h / 2, 1);
+                colors.push(0.15 + t * 0.3, 0.2 + t * 0.1, 0.35 + t * 0.2);
+            }
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.85,
+                shininess: 30
+            });
+
+            surface = new THREE.Mesh(geometry, material);
+            surface.rotation.x = -Math.PI / 2;
+            scene.add(surface);
+
+            // Wireframe
+            const wireGeo = new THREE.WireframeGeometry(geometry);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0x30363d, transparent: true, opacity: 0.2 });
+            const wire = new THREE.LineSegments(wireGeo, wireMat);
+            wire.rotation.x = -Math.PI / 2;
+            wire.name = 'wireframe';
+            scene.add(wire);
+        }
+
+        function createBalls() {
+            balls.forEach(b => scene.remove(b));
+            balls = [];
+
+            states.forEach((state, i) => {
+                const geo = new THREE.SphereGeometry(0.2, 32, 32);
+                const mat = new THREE.MeshPhongMaterial({
+                    color: state.color,
+                    emissive: state.color,
+                    emissiveIntensity: 0.4,
+                    shininess: 100
+                });
+                const ball = new THREE.Mesh(geo, mat);
+
+                // Glow
+                const glowGeo = new THREE.SphereGeometry(0.35, 32, 32);
+                const glowMat = new THREE.MeshBasicMaterial({
+                    color: state.color,
+                    transparent: true,
+                    opacity: 0.15
+                });
+                ball.add(new THREE.Mesh(glowGeo, glowMat));
+
+                updateBallPosition(ball, state.theta);
+                scene.add(ball);
+                balls.push(ball);
+            });
+        }
+
+        function updateBallPosition(ball, theta) {
+            const y = loss(theta) * 0.15 + 0.2;
+            ball.position.set(theta[0], y, theta[1]);
+        }
+
+        function createTrails() {
+            trails.forEach(t => scene.remove(t));
+            trails = [];
+
+            states.forEach((state, i) => {
+                if (state.trajectory.length < 2) return;
+
+                const points = state.trajectory.map(p => {
+                    const y = loss(p) * 0.15 + 0.05;
+                    return new THREE.Vector3(p[0], y, p[1]);
+                });
+
+                const geo = new THREE.BufferGeometry().setFromPoints(points);
+                const mat = new THREE.LineBasicMaterial({ color: state.color, transparent: true, opacity: 0.8 });
+                const line = new THREE.Line(geo, mat);
+                scene.add(line);
+                trails.push(line);
+
+                // Trail dots
+                const dotGeo = new THREE.SphereGeometry(0.06, 8, 8);
+                const dotMat = new THREE.MeshBasicMaterial({ color: state.color });
+                points.forEach((p, j) => {
+                    if (j % 3 === 0 && j > 0) {
+                        const dot = new THREE.Mesh(dotGeo, dotMat);
+                        dot.position.copy(p);
+                        trails.push(dot);
+                        scene.add(dot);
+                    }
+                });
+            });
+        }
+
+        function loss(t) {
+            return 0.5 * (stretchFactor * t[0] * t[0] + t[1] * t[1]);
+        }
+
+        function gradient(t) {
+            return [stretchFactor * t[0], t[1]];
+        }
+
+        function step() {
+            states.forEach((state, i) => {
+                const l = loss(state.theta);
+                if (l > 100) return; // Diverged
+
+                const grad = gradient(state.theta);
+                state.theta[0] -= state.lr * grad[0];
+                state.theta[1] -= state.lr * grad[1];
+                state.trajectory.push([...state.theta]);
+            });
+            stepCount++;
+        }
+
+        function updateUI() {
+            document.getElementById('step-count').textContent = stepCount;
+
+            // Update learning rate displays
+            document.getElementById('lr-low').textContent = lrLow.toFixed(3);
+            document.getElementById('lr-mid').textContent = lrMid.toFixed(3);
+            document.getElementById('lr-high').textContent = lrHigh.toFixed(3);
+
+            // Update status badges
+            const losses = states.map(s => loss(s.theta));
+
+            // Low LR - always crawling
+            const statusLow = document.getElementById('status-low');
+            if (losses[0] < 0.1) {
+                statusLow.textContent = 'Converged!';
+                statusLow.className = 'legend-status status-good';
+            } else {
+                statusLow.textContent = 'Crawling...';
+                statusLow.className = 'legend-status status-crawling';
+            }
+
+            // Mid LR - compromising
+            const statusMid = document.getElementById('status-mid');
+            if (losses[1] < 0.1) {
+                statusMid.textContent = 'Converged!';
+                statusMid.className = 'legend-status status-good';
+            } else {
+                statusMid.textContent = 'Compromising';
+                statusMid.className = 'legend-status status-good';
+            }
+
+            // High LR - oscillating or diverged
+            const statusHigh = document.getElementById('status-high');
+            const legendHigh = document.getElementById('legend-high');
+            if (losses[2] > 100) {
+                statusHigh.textContent = 'DIVERGED!';
+                statusHigh.className = 'legend-status status-diverged';
+                legendHigh.classList.add('diverged');
+            } else if (losses[2] < 0.1) {
+                statusHigh.textContent = 'Converged!';
+                statusHigh.className = 'legend-status status-good';
+                legendHigh.classList.remove('diverged');
+            } else {
+                statusHigh.textContent = 'Oscillating!';
+                statusHigh.className = 'legend-status status-oscillating';
+                legendHigh.classList.remove('diverged');
+            }
+
+            // Update insight message based on state
+            const msg = document.getElementById('insight-message');
+            if (stepCount === 0) {
+                msg.innerHTML = 'Watch how <span style="color:#3fb950">green</span> is stable but slow, while <span style="color:#f85149">red</span> oscillates wildly. No single learning rate works for both the steep and flat directions!';
+            } else if (losses[2] > 100) {
+                msg.innerHTML = '<span style="color:#f85149">Red EXPLODED!</span> High learning rate causes divergence in steep directions. Meanwhile <span style="color:#3fb950">green</span> is still crawling toward the minimum...';
+            } else if (stepCount > 50 && losses[0] > losses[1] * 2) {
+                msg.innerHTML = '<span style="color:#58a6ff">Blue</span> found a compromise, but it\'s still not optimal. <span style="color:#3fb950">Green</span> is too slow, <span style="color:#f85149">red</span> wastes energy oscillating.';
+            }
+        }
+
+        function reset() {
+            running = false;
+            document.getElementById('start-btn').textContent = '▶ Start Race';
+            document.getElementById('start-btn').classList.remove('running');
+            document.getElementById('legend-high').classList.remove('diverged');
+
+            states = [
+                { theta: [...startPos], trajectory: [[...startPos]], color: 0x3fb950, lr: lrLow },
+                { theta: [...startPos], trajectory: [[...startPos]], color: 0x58a6ff, lr: lrMid },
+                { theta: [...startPos], trajectory: [[...startPos]], color: 0xf85149, lr: lrHigh }
+            ];
+            stepCount = 0;
+
+            createBalls();
+            trails.forEach(t => scene.remove(t));
+            trails = [];
+            updateUI();
+        }
+
+        // Mouse rotation
+        let isDragging = false;
+        let prevMouse = { x: 0, y: 0 };
+        let rotation = { x: 0.8, y: 0.5 };
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            prevMouse = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            rotation.y += (e.clientX - prevMouse.x) * 0.005;
+            rotation.x += (e.clientY - prevMouse.y) * 0.005;
+            rotation.x = Math.max(0.3, Math.min(1.3, rotation.x));
+            prevMouse = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('mouseup', () => isDragging = false);
+        canvas.addEventListener('mouseleave', () => isDragging = false);
+
+        // Controls
+        document.getElementById('stretch-slider').addEventListener('input', (e) => {
+            stretchFactor = parseFloat(e.target.value);
+            document.getElementById('stretch-value').textContent = stretchFactor.toFixed(0) + '×';
+            createSurface();
+            reset();
+        });
+
+        document.getElementById('speed-slider').addEventListener('input', (e) => {
+            stepInterval = 220 - parseFloat(e.target.value);
+        });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            running = !running;
+            const btn = document.getElementById('start-btn');
+            btn.textContent = running ? '⏸ Pause' : '▶ Start Race';
+            btn.classList.toggle('running', running);
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', reset);
+
+        // Animation
+        let lastTime = 0;
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            // Camera rotation
+            const radius = 16;
+            camera.position.x = radius * Math.sin(rotation.y) * Math.cos(rotation.x);
+            camera.position.y = radius * Math.sin(rotation.x);
+            camera.position.z = radius * Math.cos(rotation.y) * Math.cos(rotation.x);
+            camera.lookAt(0, 0.5, 0);
+
+            // Step
+            if (running && time - lastTime > stepInterval) {
+                step();
+
+                states.forEach((state, i) => {
+                    updateBallPosition(balls[i], state.theta);
+                });
+
+                createTrails();
+                updateUI();
+                lastTime = time;
+            }
+
+            // Animate diverged ball
+            const highLoss = loss(states[2].theta);
+            if (highLoss > 100 && balls[2]) {
+                balls[2].scale.setScalar(1 + Math.sin(time * 0.01) * 0.3);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // Init
+        createSurface();
+        reset();
+        animate(0);
+    </script>
+</body>
+</html>

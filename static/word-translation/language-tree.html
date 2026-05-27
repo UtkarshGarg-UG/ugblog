@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Language tree</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px; box-sizing: border-box;
+    position: relative;
+  }
+  canvas {
+    display: block; width: 100%; max-width: 640px; height: auto; aspect-ratio: 1 / 1;
+    cursor: grab; touch-action: none;
+  }
+  canvas.grabbing { cursor: grabbing; }
+  .hint {
+    position: absolute; top: 22px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #786c5b;
+    pointer-events: none;
+  }
+  .axis {
+    position: absolute; bottom: 22px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 22px;
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #786c5b;
+  }
+  .axis .item { display: flex; align-items: center; gap: 6px; }
+  .axis .dot { width: 8px; height: 8px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="hint">word translation accuracy by linguistic distance from english</div>
+  <canvas id="cv"></canvas>
+  <div class="axis">
+    <span class="item"><span class="dot" style="background:#95b078"></span>strong &gt; 70%</span>
+    <span class="item"><span class="dot" style="background:#c8a838"></span>middling 45–70%</span>
+    <span class="item"><span class="dot" style="background:#c25c4a"></span>weak &lt; 45%</span>
+  </div>
+</div>
+<script>
+// Family group definitions. angleMin..angleMax in degrees; ringMax in fractional radius.
+// labelAngle is an explicit placement that avoids the angles of the languages in the family
+// (e.g. Italian sits at 0°, so Romance's label is offset to +22° instead of the midpoint).
+const families = [
+  { code: 'Germanic',     label: 'IE · GERMANIC',  angleMin:  -95, angleMax:  -55, ringMax: 0.58, tint: '#5d6c4a', labelAngle:  -95 },
+  { code: 'Romance',      label: 'IE · ROMANCE',   angleMin:  -45, angleMax:   45, ringMax: 0.74, tint: '#5d6c4a', labelAngle:   45 },
+  { code: 'Slavic',       label: 'IE · SLAVIC',    angleMin: -150, angleMax: -110, ringMax: 0.88, tint: '#7a5a3a', labelAngle: -150 },
+  { code: 'SinoTibetan',  label: 'SINO-TIBETAN',   angleMin:   95, angleMax:  130, ringMax: 1.05, tint: '#7a3a3a', labelAngle:  130 },
+  { code: 'Constructed',  label: 'CONSTRUCTED',    angleMin:  160, angleMax:  195, ringMax: 0.96, tint: '#6a5a4a', labelAngle:  195 },
+];
+
+const languages = [
+  { name: 'German',    code: 'de', acc: 75, family: 'Germanic',     angle:  -75, dist: 0.50 },
+  { name: 'French',    code: 'fr', acc: 82, family: 'Romance',      angle:  -28, dist: 0.66 },
+  { name: 'Italian',   code: 'it', acc: 66, family: 'Romance',      angle:    0, dist: 0.66 },
+  { name: 'Spanish',   code: 'es', acc: 82, family: 'Romance',      angle:   28, dist: 0.66 },
+  { name: 'Russian',   code: 'ru', acc: 52, family: 'Slavic',       angle: -130, dist: 0.80 },
+  { name: 'Chinese',   code: 'zh', acc: 32, family: 'SinoTibetan',  angle:  112, dist: 0.98 },
+  { name: 'Esperanto', code: 'eo', acc: 28, family: 'Constructed',  angle:  178, dist: 0.88 },
+];
+
+// Hex-only color so we can safely concatenate alpha suffixes.
+function accColorHex(acc) {
+  let r, g, b;
+  if (acc >= 70) {
+    const t = Math.min(1, (acc - 70) / 15);
+    r = (200 + (149 - 200) * t) | 0;
+    g = (168 + (176 - 168) * t) | 0;
+    b = ( 56 + (120 -  56) * t) | 0;
+  } else if (acc >= 45) {
+    const t = (acc - 45) / 25;
+    r = (194 + (200 - 194) * t) | 0;
+    g = ( 92 + (168 -  92) * t) | 0;
+    b = ( 74 + ( 56 -  74) * t) | 0;
+  } else {
+    r = 0xc2; g = 0x5c; b = 0x4a;
+  }
+  const hh = (v) => v.toString(16).padStart(2, '0');
+  return '#' + hh(r) + hh(g) + hh(b);
+}
+function alphaHex(a) { return Math.round(a * 255).toString(16).padStart(2, '0'); }
+function withA(hex, a) { return hex + alphaHex(a); }
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+let t0 = performance.now();
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+// User-controlled rotation offset (degrees) for the whole tree.
+let userRotation = 0;
+
+// Canvas Y-flip: convert math angle (deg, CCW from +x) to canvas angle (CW from +x).
+// Adds the user's drag rotation so the whole tree rotates together.
+function canvasAngle(deg) { return -(deg + userRotation) * Math.PI / 180; }
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const R = Math.min(w, h) * 0.36;
+
+  const tNow = (performance.now() - t0) / 1000;
+
+  // Concentric distance guides
+  ctx.strokeStyle = 'rgba(138, 126, 109, 0.08)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 3; i++) {
+    ctx.beginPath(); ctx.arc(cx, cy, R * (i / 3), 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // Family sectors (filled wedges, low opacity)
+  families.forEach((f, fi) => {
+    const appearT = 0.15 + fi * 0.08;
+    const u = Math.max(0, Math.min(1, (tNow - appearT) / 0.6));
+    if (u <= 0.001) return;
+    const eased = easeOutCubic(u);
+
+    const aMin = canvasAngle(f.angleMax); // note: angleMax → smaller canvas angle (because we negated)
+    const aMax = canvasAngle(f.angleMin);
+    const rOuter = f.ringMax * R;
+
+    // wedge fill
+    ctx.fillStyle = withA(f.tint, 0.10 * eased);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, rOuter, aMin, aMax, false);
+    ctx.closePath();
+    ctx.fill();
+
+    // outer arc
+    ctx.strokeStyle = withA(f.tint, 0.50 * eased);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rOuter, aMin, aMax, false);
+    ctx.stroke();
+
+    // family label placed at an explicit safe angle (away from any language in the family)
+    // and further out radially than the language labels, so it reads as a secondary layer.
+    const labelDeg = (f.labelAngle !== undefined) ? f.labelAngle : ((f.angleMin + f.angleMax) / 2);
+    const midA = canvasAngle(labelDeg);
+    const lr = rOuter + 38;
+    const lx = cx + lr * Math.cos(midA);
+    const ly = cy + lr * Math.sin(midA);
+    ctx.fillStyle = withA('#8a7e6d', 0.70 * eased);
+    ctx.font = '700 8.5px -apple-system, BlinkMacSystemFont, sans-serif';
+    // anchor based on horizontal quadrant so labels don't clip the canvas edges
+    const cx_off = Math.cos(midA);
+    if (cx_off > 0.30)      ctx.textAlign = 'left';
+    else if (cx_off < -0.30) ctx.textAlign = 'right';
+    else                     ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(f.label, lx, ly);
+  });
+
+  // Language branches and nodes (faster appear)
+  languages.forEach((lang, idx) => {
+    const appearT = 0.55 + idx * 0.10;
+    const u = Math.max(0, Math.min(1, (tNow - appearT) / 0.7));
+    if (u <= 0.001) return;
+    const eased = easeOutCubic(u);
+
+    const a = canvasAngle(lang.angle);
+    const rDist = lang.dist * R;
+    const ex = cx + rDist * Math.cos(a);
+    const ey = cy + rDist * Math.sin(a);
+    const branchEndX = cx + (rDist * eased) * Math.cos(a);
+    const branchEndY = cy + (rDist * eased) * Math.sin(a);
+
+    const accHex = accColorHex(lang.acc);
+
+    // branch line: gradient from cream-faint at center to accent at end
+    const grad = ctx.createLinearGradient(cx, cy, ex, ey);
+    grad.addColorStop(0, withA('#8a7e6d', 0.10));
+    grad.addColorStop(1, withA(accHex, 0.80));
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(branchEndX, branchEndY);
+    ctx.stroke();
+
+    if (eased < 0.5) return;
+    const finalT = (eased - 0.5) / 0.5;
+    const alpha = Math.min(1, finalT);
+
+    // halo
+    const dotR = 8 + (lang.acc / 100) * 6;
+    const haloR = 26 + (lang.acc / 100) * 14;
+    const g = ctx.createRadialGradient(ex, ey, 0, ex, ey, haloR);
+    g.addColorStop(0, withA(accHex, 0.30 * alpha));
+    g.addColorStop(1, withA(accHex, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(ex, ey, haloR, 0, Math.PI * 2); ctx.fill();
+
+    // pulse ring
+    const pulse = 1 + 0.30 * Math.sin(tNow * 1.4 + idx * 0.6);
+    ctx.strokeStyle = withA(accHex, 0.40 * alpha);
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(ex, ey, dotR * pulse * 1.4, 0, Math.PI * 2); ctx.stroke();
+
+    // node
+    ctx.fillStyle = accHex;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath(); ctx.arc(ex, ey, dotR, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // language code inside node
+    ctx.fillStyle = '#1a1813';
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(lang.code, ex, ey + 0.5);
+
+    // language name label outside the halo (not just the dot)
+    const labelOff = haloR + 10;
+    const labelX = ex + Math.cos(a) * labelOff;
+    const labelY = ey + Math.sin(a) * labelOff;
+    ctx.fillStyle = withA('#e8dcc1', alpha);
+    ctx.font = '600 13px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(lang.name, labelX, labelY);
+
+    // accuracy
+    ctx.fillStyle = withA('#a0967f', alpha * 0.9);
+    ctx.font = '11px ui-monospace, monospace';
+    ctx.fillText(lang.acc + '% top-1', labelX, labelY + 14);
+  });
+
+  // Center: English (always visible quickly)
+  const ca = Math.min(1, tNow / 0.4);
+  const caEased = easeOutCubic(ca);
+  const englishHaloR = 30;
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, englishHaloR);
+  g.addColorStop(0, withA('#82a8c3', 0.40 * caEased));
+  g.addColorStop(1, withA('#82a8c3', 0));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx, cy, englishHaloR, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#82a8c3';
+  ctx.globalAlpha = caEased;
+  ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#1a1813';
+  ctx.font = '700 10px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('en', cx, cy + 0.5);
+
+  ctx.fillStyle = withA('#e8dcc1', caEased);
+  ctx.font = '700 14px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.textBaseline = 'top';
+  ctx.fillText('English', cx, cy + 18);
+}
+
+function loop() { draw(); requestAnimationFrame(loop); }
+
+// Grab-and-rotate: dragging anywhere on the canvas rotates the whole tree around English.
+let dragging = false;
+let dragStartAngleDeg = 0;
+let dragStartRotation = 0;
+
+function pointerAngleDeg(clientX, clientY) {
+  const r = cv.getBoundingClientRect();
+  const dx = clientX - r.left - r.width / 2;
+  const dy = clientY - r.top  - r.height / 2;
+  return Math.atan2(-dy, dx) * 180 / Math.PI; // math-convention degrees (CCW)
+}
+
+function startDrag(clientX, clientY) {
+  dragging = true;
+  dragStartAngleDeg = pointerAngleDeg(clientX, clientY);
+  dragStartRotation = userRotation;
+  cv.classList.add('grabbing');
+}
+function moveDrag(clientX, clientY) {
+  if (!dragging) return;
+  const a = pointerAngleDeg(clientX, clientY);
+  let delta = a - dragStartAngleDeg;
+  while (delta > 180) delta -= 360;
+  while (delta < -180) delta += 360;
+  userRotation = dragStartRotation + delta;
+}
+function endDrag() {
+  dragging = false;
+  cv.classList.remove('grabbing');
+}
+
+cv.addEventListener('mousedown', (e) => { e.preventDefault(); startDrag(e.clientX, e.clientY); });
+window.addEventListener('mousemove', (e) => moveDrag(e.clientX, e.clientY));
+window.addEventListener('mouseup', endDrag);
+
+cv.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const t = e.touches[0]; if (t) startDrag(t.clientX, t.clientY);
+}, { passive: false });
+window.addEventListener('touchmove', (e) => {
+  if (!dragging) return;
+  const t = e.touches[0]; if (t) moveDrag(t.clientX, t.clientY);
+}, { passive: false });
+window.addEventListener('touchend', endDrag);
+window.addEventListener('touchcancel', endDrag);
+
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'restart') {
+    t0 = performance.now();
+    userRotation = 0;
+  }
+});
+
+fit();
+window.addEventListener('resize', fit);
+loop();
+</script>
+</body>
+</html>

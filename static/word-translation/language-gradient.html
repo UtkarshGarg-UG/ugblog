@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>language gradient</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 36px; box-sizing: border-box;
+  }
+  .hint {
+    position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #786c5b;
+  }
+  .chart { width: 100%; max-width: 460px; }
+  .row {
+    display: grid; grid-template-columns: 64px 1fr 50px;
+    align-items: center; gap: 10px;
+    margin-bottom: 14px;
+  }
+  .lang {
+    font-size: 0.92rem; letter-spacing: 0.04em;
+    color: #e8dcc1;
+  }
+  .bar-track {
+    height: 10px; background: rgba(138, 126, 109, 0.12);
+    border-radius: 6px; position: relative; overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #95b078, #d4895c, #c25c4a);
+    background-size: 320px 100%;
+    border-radius: 6px;
+    width: 0%;
+    transition: width 1.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .val {
+    color: #8a7e6d; font-family: ui-monospace, monospace;
+    font-size: 0.84rem; text-align: right;
+  }
+  .axis {
+    display: grid; grid-template-columns: 64px 1fr 50px; gap: 10px;
+    margin-top: 6px; font-size: 0.7rem;
+    color: #786c5b; letter-spacing: 0.08em;
+  }
+  .axis span:nth-child(2) {
+    display: flex; justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="hint">top-1 word translation accuracy</div>
+  <div class="chart" id="chart"></div>
+  <div class="axis">
+    <span></span>
+    <span><span>0%</span><span>50%</span><span>100%</span></span>
+    <span></span>
+  </div>
+</div>
+<script>
+const data = [
+  { lang: 'en–es', acc: 82 },
+  { lang: 'en–fr', acc: 82 },
+  { lang: 'en–de', acc: 75 },
+  { lang: 'en–it', acc: 66 },
+  { lang: 'en–ru', acc: 52 },
+  { lang: 'en–zh', acc: 32 },
+  { lang: 'en–eo', acc: 28 },
+];
+
+const chart = document.getElementById('chart');
+data.forEach(d => {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `
+    <div class="lang">${d.lang}</div>
+    <div class="bar-track"><div class="bar-fill" data-target="${d.acc}"></div></div>
+    <div class="val">${d.acc}%</div>
+  `;
+  chart.appendChild(row);
+});
+
+// animate bars on load (and on every IntersectionObserver intersection)
+function animate() {
+  document.querySelectorAll('.bar-fill').forEach((el, i) => {
+    el.style.width = '0%';
+    setTimeout(() => {
+      el.style.width = el.dataset.target + '%';
+    }, 80 * i + 50);
+  });
+}
+animate();
+
+// replay when the document becomes visible after being hidden
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') animate();
+});
+</script>
+</body>
+</html>

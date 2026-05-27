@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Zig-Zag Problem</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #f85149;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8b949e;
+            margin-bottom: 25px;
+        }
+
+        .viz-container {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .main-panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        canvas {
+            background: #0d1117;
+            border-radius: 8px;
+        }
+
+        .stats-panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 200px;
+        }
+
+        .stat {
+            margin-bottom: 20px;
+        }
+
+        .stat-label {
+            color: #8b949e;
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1.5rem;
+            color: #58a6ff;
+        }
+
+        .stat-value.bad {
+            color: #f85149;
+        }
+
+        .controls {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        label {
+            color: #8b949e;
+            min-width: 150px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            max-width: 200px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            min-width: 60px;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: #238636;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2ea043;
+        }
+
+        .btn-secondary {
+            background: #30363d;
+            color: #c9d1d9;
+        }
+
+        .btn-secondary:hover {
+            background: #3c444d;
+        }
+
+        .explanation {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid rgba(248, 81, 73, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .explanation strong {
+            color: #f85149;
+        }
+
+        .gradient-display {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #30363d;
+        }
+
+        .gradient-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+        }
+
+        .gradient-label {
+            width: 100px;
+            color: #8b949e;
+            font-size: 0.85rem;
+        }
+
+        .gradient-bar-bg {
+            flex: 1;
+            height: 20px;
+            background: #21262d;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .gradient-bar {
+            height: 100%;
+            position: absolute;
+            top: 0;
+            transition: width 0.1s, left 0.1s;
+        }
+
+        .gradient-bar.positive {
+            background: #3fb950;
+            left: 50%;
+        }
+
+        .gradient-bar.negative {
+            background: #f85149;
+            right: 50%;
+        }
+
+        .center-line {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #484f58;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>The Zig-Zag Problem</h2>
+        <p class="subtitle">Why high condition number kills gradient descent</p>
+
+        <div class="viz-container">
+            <div class="main-panel">
+                <canvas id="canvas" width="500" height="400"></canvas>
+            </div>
+
+            <div class="stats-panel">
+                <div class="stat">
+                    <div class="stat-label">Step</div>
+                    <div class="stat-value" id="step">0</div>
+                </div>
+
+                <div class="stat">
+                    <div class="stat-label">Loss</div>
+                    <div class="stat-value" id="loss">—</div>
+                </div>
+
+                <div class="stat">
+                    <div class="stat-label">Condition Number</div>
+                    <div class="stat-value bad" id="kappa">20</div>
+                </div>
+
+                <div class="stat">
+                    <div class="stat-label">Distance to Minimum</div>
+                    <div class="stat-value" id="distance">—</div>
+                </div>
+
+                <div class="gradient-display">
+                    <div class="stat-label">Gradient Components</div>
+                    <div class="gradient-row">
+                        <span class="gradient-label">∂L/∂θ₁ (steep)</span>
+                        <div class="gradient-bar-bg">
+                            <div class="center-line"></div>
+                            <div class="gradient-bar" id="grad1"></div>
+                        </div>
+                    </div>
+                    <div class="gradient-row">
+                        <span class="gradient-label">∂L/∂θ₂ (flat)</span>
+                        <div class="gradient-bar-bg">
+                            <div class="center-line"></div>
+                            <div class="gradient-bar" id="grad2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <label>Learning Rate (η):</label>
+                <input type="range" id="lr" min="0.001" max="0.1" step="0.001" value="0.02">
+                <span class="value" id="lr-val">0.020</span>
+            </div>
+
+            <div class="control-row">
+                <label>Condition Number (κ):</label>
+                <input type="range" id="kappa-slider" min="1" max="50" step="1" value="20">
+                <span class="value" id="kappa-val">20</span>
+            </div>
+
+            <div class="button-row">
+                <button class="btn-primary" id="run-btn">▶ Run</button>
+                <button class="btn-secondary" id="step-btn">Step</button>
+                <button class="btn-secondary" id="reset-btn">↺ Reset</button>
+            </div>
+        </div>
+
+        <div class="explanation">
+            <strong>The Problem:</strong> With condition number κ = <span id="kappa-text">20</span>, the gradient in the steep direction (θ₁) is <span id="kappa-text2">20</span>× larger than in the flat direction (θ₂).
+            <br><br>
+            Watch the optimizer oscillate back and forth in the steep direction while making painfully slow progress toward the minimum.
+            <strong>This is exactly what orthogonalization fixes!</strong>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let lr = 0.02;
+        let kappa = 20;
+        let theta = [3, 2];
+        let trajectory = [[...theta]];
+        let step = 0;
+        let running = false;
+        let intervalId = null;
+
+        function loss(t) {
+            return 0.5 * (kappa * t[0] * t[0] + t[1] * t[1]);
+        }
+
+        function gradient(t) {
+            return [kappa * t[0], t[1]];
+        }
+
+        function getHeight(x, y) {
+            return 0.5 * (kappa * x * x + y * y);
+        }
+
+        function draw() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const scale = 50;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Draw contours
+            const levels = [0.5, 1, 2, 4, 8, 16, 32];
+            levels.forEach((level, i) => {
+                ctx.strokeStyle = `rgba(88, 166, 255, ${0.15 + i * 0.05})`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+
+                // Ellipse: 0.5 * (kappa * x^2 + y^2) = level
+                // x^2 / (2*level/kappa) + y^2 / (2*level) = 1
+                const a = Math.sqrt(2 * level / kappa);
+                const b = Math.sqrt(2 * level);
+
+                for (let t = 0; t <= 2 * Math.PI + 0.1; t += 0.05) {
+                    const x = a * Math.cos(t);
+                    const y = b * Math.sin(t);
+                    if (t === 0) ctx.moveTo(cx + x * scale, cy - y * scale);
+                    else ctx.lineTo(cx + x * scale, cy - y * scale);
+                }
+                ctx.stroke();
+            });
+
+            // Draw minimum marker
+            ctx.fillStyle = '#3fb950';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 6, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Draw trajectory
+            if (trajectory.length > 1) {
+                ctx.strokeStyle = '#f85149';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                trajectory.forEach((p, i) => {
+                    const sx = cx + p[0] * scale;
+                    const sy = cy - p[1] * scale;
+                    if (i === 0) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                });
+                ctx.stroke();
+
+                // Draw dots at each step
+                trajectory.forEach((p, i) => {
+                    const sx = cx + p[0] * scale;
+                    const sy = cy - p[1] * scale;
+                    ctx.fillStyle = i === trajectory.length - 1 ? '#f85149' : 'rgba(248, 81, 73, 0.5)';
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, i === trajectory.length - 1 ? 6 : 3, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+            }
+
+            // Draw gradient arrow at current position
+            const grad = gradient(theta);
+            const gradMag = Math.sqrt(grad[0] * grad[0] + grad[1] * grad[1]);
+            if (gradMag > 0.01) {
+                const arrowLen = Math.min(gradMag * 5, 40);
+                const ax = -grad[0] / gradMag * arrowLen;
+                const ay = -grad[1] / gradMag * arrowLen;
+
+                ctx.strokeStyle = '#a371f7';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cx + theta[0] * scale, cy - theta[1] * scale);
+                ctx.lineTo(cx + theta[0] * scale + ax, cy - theta[1] * scale + ay);
+                ctx.stroke();
+            }
+
+            // Update stats
+            document.getElementById('step').textContent = step;
+            document.getElementById('loss').textContent = loss(theta).toFixed(4);
+            document.getElementById('distance').textContent = Math.sqrt(theta[0] * theta[0] + theta[1] * theta[1]).toFixed(3);
+
+            // Update gradient bars
+            const maxGrad = Math.max(Math.abs(grad[0]), Math.abs(grad[1]), 0.01) * 1.2;
+            const grad1Pct = Math.abs(grad[0]) / kappa * 25;  // Normalized
+            const grad2Pct = Math.abs(grad[1]) * 25;
+
+            const grad1Bar = document.getElementById('grad1');
+            const grad2Bar = document.getElementById('grad2');
+
+            grad1Bar.style.width = Math.min(grad1Pct, 50) + '%';
+            grad1Bar.className = 'gradient-bar ' + (grad[0] >= 0 ? 'positive' : 'negative');
+            if (grad[0] < 0) grad1Bar.style.left = (50 - Math.min(grad1Pct, 50)) + '%';
+            else grad1Bar.style.left = '50%';
+
+            grad2Bar.style.width = Math.min(grad2Pct, 50) + '%';
+            grad2Bar.className = 'gradient-bar ' + (grad[1] >= 0 ? 'positive' : 'negative');
+            if (grad[1] < 0) grad2Bar.style.left = (50 - Math.min(grad2Pct, 50)) + '%';
+            else grad2Bar.style.left = '50%';
+        }
+
+        function doStep() {
+            const grad = gradient(theta);
+            theta[0] -= lr * grad[0];
+            theta[1] -= lr * grad[1];
+            trajectory.push([...theta]);
+            step++;
+            draw();
+
+            // Stop if converged or diverged
+            if (loss(theta) < 0.0001 || loss(theta) > 1000 || step > 500) {
+                stopRunning();
+            }
+        }
+
+        function startRunning() {
+            if (running) return;
+            running = true;
+            document.getElementById('run-btn').textContent = '⏸ Pause';
+            intervalId = setInterval(doStep, 50);
+        }
+
+        function stopRunning() {
+            running = false;
+            document.getElementById('run-btn').textContent = '▶ Run';
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+        }
+
+        function reset() {
+            stopRunning();
+            theta = [3, 2];
+            trajectory = [[...theta]];
+            step = 0;
+            draw();
+        }
+
+        // Event listeners
+        document.getElementById('lr').addEventListener('input', e => {
+            lr = parseFloat(e.target.value);
+            document.getElementById('lr-val').textContent = lr.toFixed(3);
+        });
+
+        document.getElementById('kappa-slider').addEventListener('input', e => {
+            kappa = parseFloat(e.target.value);
+            document.getElementById('kappa-val').textContent = kappa;
+            document.getElementById('kappa').textContent = kappa;
+            document.getElementById('kappa-text').textContent = kappa;
+            document.getElementById('kappa-text2').textContent = kappa;
+            reset();
+        });
+
+        document.getElementById('run-btn').addEventListener('click', () => {
+            if (running) stopRunning();
+            else startRunning();
+        });
+
+        document.getElementById('step-btn').addEventListener('click', () => {
+            stopRunning();
+            doStep();
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', reset);
+
+        draw();
+    </script>
+</body>
+</html>

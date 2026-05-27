@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>word2vec analogy</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #1a1813; color: #e8dcc1;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    width: 100%; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; box-sizing: border-box;
+  }
+  canvas { display: block; width: 100%; max-width: 540px; height: auto; aspect-ratio: 1 / 1; }
+  .hint {
+    position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #786c5b;
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="hint">king − man + woman ≈ queen</div>
+  <canvas id="cv"></canvas>
+</div>
+<script>
+const pts = [
+  { l: 'man',   x: -1.1, y: -0.6, c: '#82a8c3' },
+  { l: 'king',  x: -1.1, y:  0.7, c: '#82a8c3' },
+  { l: 'woman', x:  0.6, y: -0.6, c: '#d4895c' },
+  { l: 'queen', x:  0.6, y:  0.7, c: '#d4895c' },
+];
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+let t = 0;
+function drawArrow(x0, y0, x1, y1, color, dashed) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1.6;
+  if (dashed) ctx.setLineDash([4, 4]); else ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // arrowhead
+  const a = Math.atan2(y1 - y0, x1 - x0);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - 9*Math.cos(a - 0.35), y1 - 9*Math.sin(a - 0.35));
+  ctx.lineTo(x1 - 9*Math.cos(a + 0.35), y1 - 9*Math.sin(a + 0.35));
+  ctx.closePath(); ctx.fill();
+}
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w/2, cy = h/2, scale = Math.min(w, h) * 0.27;
+
+  // The "gender" arrow (man→woman) and (king→queen) demonstrate parallel offsets
+  const man = pts[0], king = pts[1], woman = pts[2], queen = pts[3];
+  function P(p) { return [cx + p.x * scale, cy - p.y * scale]; }
+
+  // Parallel offset arrows (gender direction)
+  const [mx, my] = P(man), [wx, wy] = P(woman);
+  const [kx, ky] = P(king), [qx, qy] = P(queen);
+
+  // animated reveal
+  const phase = (Math.sin(t * 0.7) + 1) / 2; // 0..1
+
+  // gender direction arrows
+  drawArrow(mx, my, wx, wy, 'rgba(149, 176, 120,0.7)', false);
+  drawArrow(kx, ky, qx, qy, 'rgba(149, 176, 120,0.7)', false);
+
+  // royalty direction (man→king)
+  drawArrow(mx, my, kx, ky, 'rgba(194, 92, 74,0.45)', true);
+  drawArrow(wx, wy, qx, qy, 'rgba(194, 92, 74,0.45)', true);
+
+  // points + labels
+  pts.forEach(p => {
+    const [px, py] = P(p);
+    ctx.fillStyle = p.c;
+    ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#e8dcc1';
+    ctx.font = '600 14px -apple-system, sans-serif';
+    const off = p.l === 'king' || p.l === 'queen' ? -12 : 22;
+    ctx.textAlign = (p.x < 0) ? 'right' : 'left';
+    ctx.fillText(p.l, px + (p.x < 0 ? -10 : 10), py + 5);
+  });
+
+  // axis hints (subtle)
+  ctx.fillStyle = '#786c5b'; ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('gender →', cx + scale*0.05, cy + scale*1.05);
+  ctx.save();
+  ctx.translate(cx - scale*1.15, cy);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText('royalty →', 0, 0);
+  ctx.restore();
+}
+
+function animate() {
+  t += 0.02;
+  draw();
+  requestAnimationFrame(animate);
+}
+
+fit();
+window.addEventListener('resize', fit);
+animate();
+</script>
+</body>
+</html>

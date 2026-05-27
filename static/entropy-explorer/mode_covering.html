@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mode-Covering Demo</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #111827;
+    --muted: #6b7280;
+    --ring: #e5e7eb;
+    --accent: #10b981;
+    --p-color: #ef4444;
+    --q-color: #3b82f6;
+    --penalty: #f59e0b;
+    --penalty-r: #8b5cf6;
+  }
+  html, body {
+    background: var(--bg);
+    color: var(--fg);
+    margin: 0;
+    padding: 0;
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  .header {
+    margin-bottom: 12px;
+  }
+  .header h2 {
+    font-size: 18px;
+    margin: 0 0 4px 0;
+  }
+  .header p {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.5;
+  }
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto auto;
+    gap: 12px;
+    align-items: end;
+    margin-bottom: 8px;
+  }
+  .field {
+    display: grid;
+    grid-template-columns: 60px 1fr 50px;
+    gap: 8px;
+    align-items: center;
+  }
+  .field label {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .field .val {
+    font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--fg);
+    text-align: right;
+  }
+  input[type="range"] { width: 100%; }
+  button {
+    padding: 8px 12px;
+    border: 1px solid var(--ring);
+    background: #fff;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  button:hover { background: #f9fafb; }
+  button:active { transform: translateY(1px); }
+  button.primary {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .panel {
+    display: grid;
+    grid-template-columns: 1fr 220px;
+    gap: 12px;
+  }
+  #chart {
+    width: 100%;
+    height: 640px;
+    border: 1px solid var(--ring);
+    border-radius: 10px;
+  }
+  .info {
+    border: 1px solid var(--ring);
+    border-radius: 10px;
+    padding: 14px;
+    background: #fafafa;
+    display: grid;
+    gap: 10px;
+    align-content: start;
+  }
+  .metric {
+    display: grid;
+    gap: 2px;
+  }
+  .metric .name {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .metric .num {
+    font-size: 20px;
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .metric.fkl .num { color: var(--p-color); }
+  .metric.rkl .num { color: var(--q-color); }
+  .legend {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+    border-top: 1px dashed var(--ring);
+    padding-top: 8px;
+  }
+  .sw {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: 4px;
+  }
+  @media (max-width: 800px) {
+    .panel { grid-template-columns: 1fr; }
+    .controls { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h2>Forward vs Reverse KL: Mode-Covering vs Mode-Seeking</h2>
+    <p>
+      The true distribution <b style="color:var(--p-color)">P</b> has two modes (peaks at &minus;2 and +2). Your model
+      <b style="color:var(--q-color)">Q</b> is a single Gaussian. Drag the sliders to move and resize Q. The two bottom panels show
+      the <b>per-x contribution</b> of each direction: <span style="color:var(--penalty)"><b>forward KL</b></span>
+      <i>P(x)&middot;log P(x)/Q(x)</i> spikes where Q ignores a mode of P, while <span style="color:var(--penalty-r)"><b>reverse KL</b></span>
+      <i>Q(x)&middot;log Q(x)/P(x)</i> spikes where Q puts mass where P is silent.
+    </p>
+  </div>
+
+  <div class="controls">
+    <div class="field">
+      <label for="muQ">μ<sub>Q</sub></label>
+      <input id="muQ" type="range" min="-4" max="4" step="0.05" value="0" />
+      <span class="val" id="muQVal">0.00</span>
+    </div>
+    <div class="field">
+      <label for="sigQ">σ<sub>Q</sub></label>
+      <input id="sigQ" type="range" min="0.4" max="3.0" step="0.05" value="2.0" />
+      <span class="val" id="sigQVal">2.00</span>
+    </div>
+    <button id="modeCover" class="primary">Mode-cover preset</button>
+    <button id="modeSeek">Mode-seek preset</button>
+  </div>
+
+  <div class="panel">
+    <div id="chart"></div>
+    <div class="info">
+      <div class="metric fkl">
+        <div class="name">Forward KL &nbsp;D(P‖Q)</div>
+        <div class="num" id="fklVal">–</div>
+      </div>
+      <div class="metric rkl">
+        <div class="name">Reverse KL &nbsp;D(Q‖P)</div>
+        <div class="num" id="rklVal">–</div>
+      </div>
+      <div class="legend">
+        <div><span class="sw" style="background:var(--p-color)"></span>P (true, bimodal)</div>
+        <div><span class="sw" style="background:var(--q-color)"></span>Q (your model)</div>
+        <div><span class="sw" style="background:var(--penalty)"></span>P(x)·log P(x)/Q(x)<br>(per-x forward-KL contribution)</div>
+        <div><span class="sw" style="background:var(--penalty-r)"></span>Q(x)·log Q(x)/P(x)<br>(per-x reverse-KL contribution)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const muQEl = document.getElementById('muQ');
+  const sigQEl = document.getElementById('sigQ');
+  const muQValEl = document.getElementById('muQVal');
+  const sigQValEl = document.getElementById('sigQVal');
+  const fklEl = document.getElementById('fklVal');
+  const rklEl = document.getElementById('rklVal');
+  const chartEl = document.getElementById('chart');
+  const modeCoverBtn = document.getElementById('modeCover');
+  const modeSeekBtn = document.getElementById('modeSeek');
+
+  // Grid
+  const xMin = -6, xMax = 6, dx = 0.05;
+  const N = Math.round((xMax - xMin) / dx) + 1;
+  const xs = new Array(N);
+  for (let i = 0; i < N; i++) xs[i] = xMin + i * dx;
+
+  // Bimodal P: 0.5 * N(-2, 0.6) + 0.5 * N(2, 0.6)
+  function gaussian(x, mu, sig) {
+    const z = (x - mu) / sig;
+    return Math.exp(-0.5 * z * z) / (sig * Math.sqrt(2 * Math.PI));
+  }
+  const P = xs.map(x => 0.5 * gaussian(x, -2, 0.6) + 0.5 * gaussian(x, 2, 0.6));
+
+  function recompute() {
+    const mu = parseFloat(muQEl.value);
+    const sig = parseFloat(sigQEl.value);
+    muQValEl.textContent = mu.toFixed(2);
+    sigQValEl.textContent = sig.toFixed(2);
+
+    const Q = xs.map(x => gaussian(x, mu, sig));
+
+    // Per-x KL contributions
+    //   forward: P(x) * log2(P(x)/Q(x))
+    //   reverse: Q(x) * log2(Q(x)/P(x))
+    // Floor tiny values to avoid log(0).
+    const eps = 1e-12;
+    const contribF = new Array(N);
+    const contribR = new Array(N);
+    let fkl = 0, rkl = 0;
+    for (let i = 0; i < N; i++) {
+      const p = Math.max(P[i], eps);
+      const q = Math.max(Q[i], eps);
+      const cf = p * Math.log2(p / q);
+      const cr = q * Math.log2(q / p);
+      contribF[i] = cf;
+      contribR[i] = cr;
+      fkl += cf * dx;
+      rkl += cr * dx;
+    }
+
+    fklEl.textContent = fkl.toFixed(3) + ' bits';
+    rklEl.textContent = rkl.toFixed(3) + ' bits';
+
+    Plotly.restyle(chartEl, { y: [Q] }, [1]);
+    Plotly.restyle(chartEl, { y: [contribF] }, [2]);
+    Plotly.restyle(chartEl, { y: [contribR] }, [3]);
+  }
+
+  function initChart() {
+    const Q0 = xs.map(x => gaussian(x, 0, 2));
+    const traceP = {
+      x: xs, y: P,
+      type: 'scatter', mode: 'lines',
+      name: 'P (true)',
+      line: { color: '#ef4444', width: 2 },
+      fill: 'tozeroy', fillcolor: 'rgba(239, 68, 68, 0.15)',
+      xaxis: 'x', yaxis: 'y',
+      hovertemplate: 'P(%{x:.2f}) = %{y:.3f}<extra></extra>'
+    };
+    const traceQ = {
+      x: xs, y: Q0,
+      type: 'scatter', mode: 'lines',
+      name: 'Q (model)',
+      line: { color: '#3b82f6', width: 2 },
+      xaxis: 'x', yaxis: 'y',
+      hovertemplate: 'Q(%{x:.2f}) = %{y:.3f}<extra></extra>'
+    };
+    const traceContribF = {
+      x: xs, y: new Array(N).fill(0),
+      type: 'scatter', mode: 'lines',
+      name: 'Forward-KL per-x',
+      line: { color: '#f59e0b', width: 1.5 },
+      fill: 'tozeroy', fillcolor: 'rgba(245, 158, 11, 0.25)',
+      xaxis: 'x2', yaxis: 'y2',
+      hovertemplate: 'forward(%{x:.2f}) = %{y:.3f}<extra></extra>'
+    };
+    const traceContribR = {
+      x: xs, y: new Array(N).fill(0),
+      type: 'scatter', mode: 'lines',
+      name: 'Reverse-KL per-x',
+      line: { color: '#8b5cf6', width: 1.5 },
+      fill: 'tozeroy', fillcolor: 'rgba(139, 92, 246, 0.25)',
+      xaxis: 'x3', yaxis: 'y3',
+      hovertemplate: 'reverse(%{x:.2f}) = %{y:.3f}<extra></extra>'
+    };
+
+    const layout = {
+      grid: { rows: 3, columns: 1, pattern: 'independent', roworder: 'top to bottom' },
+      height: 640,
+      margin: { l: 50, r: 10, t: 20, b: 40 },
+      xaxis: { title: 'x', range: [xMin, xMax], zeroline: false },
+      yaxis: { title: 'density', rangemode: 'tozero' },
+      xaxis2: { title: 'x', range: [xMin, xMax], zeroline: false },
+      yaxis2: { title: 'forward: P·log P/Q', zeroline: true, zerolinecolor: '#d1d5db' },
+      xaxis3: { title: 'x', range: [xMin, xMax], zeroline: false },
+      yaxis3: { title: 'reverse: Q·log Q/P', zeroline: true, zerolinecolor: '#d1d5db' },
+      showlegend: true,
+      legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.08 }
+    };
+
+    Plotly.newPlot(chartEl, [traceP, traceQ, traceContribF, traceContribR], layout, {
+      displayModeBar: false, responsive: true
+    }).then(recompute);
+  }
+
+  muQEl.addEventListener('input', recompute);
+  sigQEl.addEventListener('input', recompute);
+  modeCoverBtn.addEventListener('click', () => {
+    muQEl.value = 0; sigQEl.value = 2.4; recompute();
+  });
+  modeSeekBtn.addEventListener('click', () => {
+    muQEl.value = 2; sigQEl.value = 0.6; recompute();
+  });
+
+  initChart();
+})();
+</script>
+</body>
+</html>

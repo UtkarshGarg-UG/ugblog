@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Momentum: Ball Rolling Downhill</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            height: calc(100vh - 70px);
+        }
+
+        .panel {
+            position: relative;
+            border-right: 1px solid #30363d;
+        }
+
+        .panel:last-child {
+            border-right: none;
+        }
+
+        .panel-header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px 20px;
+            background: linear-gradient(180deg, rgba(13, 17, 23, 0.95) 0%, rgba(13, 17, 23, 0) 100%);
+            z-index: 10;
+        }
+
+        .panel-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .panel.vanilla .panel-title {
+            color: #f85149;
+        }
+
+        .panel.momentum .panel-title {
+            color: #3fb950;
+        }
+
+        .panel-subtitle {
+            font-size: 0.8rem;
+            color: #8b949e;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .stats-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(13, 17, 23, 0.9);
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            padding: 12px 16px;
+            backdrop-filter: blur(8px);
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: auto auto;
+            gap: 4px 20px;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #8b949e;
+        }
+
+        .stat-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+        }
+
+        .panel.vanilla .stat-value {
+            color: #f85149;
+        }
+
+        .panel.momentum .stat-value {
+            color: #3fb950;
+        }
+
+        .velocity-viz {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(13, 17, 23, 0.95);
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            padding: 12px 16px;
+            width: 180px;
+        }
+
+        .velocity-title {
+            font-size: 0.7rem;
+            color: #8b949e;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .velocity-arrow {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .gradient-decomposition {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #30363d;
+        }
+
+        .gradient-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 0.7rem;
+        }
+
+        .gradient-label {
+            width: 60px;
+            color: #8b949e;
+        }
+
+        .gradient-bar-container {
+            flex: 1;
+            height: 8px;
+            background: #21262d;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .gradient-bar {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.1s, background 0.1s;
+        }
+
+        .gradient-bar.positive {
+            background: linear-gradient(90deg, #238636, #3fb950);
+        }
+
+        .gradient-bar.negative {
+            background: linear-gradient(90deg, #f85149, #da3633);
+        }
+
+        .gradient-bar.oscillating {
+            animation: oscillate-color 0.3s infinite alternate;
+        }
+
+        @keyframes oscillate-color {
+            from { background: linear-gradient(90deg, #238636, #3fb950); }
+            to { background: linear-gradient(90deg, #f85149, #da3633); }
+        }
+
+        .gradient-value {
+            width: 45px;
+            text-align: right;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.65rem;
+        }
+
+        .insight-label {
+            font-size: 0.65rem;
+            color: #f0883e;
+            text-align: center;
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        .arrow-container {
+            position: relative;
+            width: 100%;
+            height: 40px;
+        }
+
+        .arrow-line {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            height: 4px;
+            background: linear-gradient(90deg, #3fb950, #56d364);
+            transform-origin: left center;
+            border-radius: 2px;
+            transition: width 0.1s, transform 0.1s;
+        }
+
+        .arrow-head {
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-left: 8px solid #56d364;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+            transition: left 0.1s, top 0.1s;
+        }
+
+        .controls-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 1px solid #30363d;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            z-index: 100;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .control-label {
+            font-size: 0.85rem;
+            color: #8b949e;
+            white-space: nowrap;
+        }
+
+        .control-value {
+            font-family: 'SF Mono', Monaco, monospace;
+            color: #58a6ff;
+            font-size: 0.9rem;
+            min-width: 50px;
+        }
+
+        input[type="range"] {
+            width: 120px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #30363d;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #58a6ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 24px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-start {
+            background: #238636;
+            color: #fff;
+        }
+
+        .btn-start:hover {
+            background: #2ea043;
+        }
+
+        .btn-start.running {
+            background: #f85149;
+        }
+
+        .btn-reset {
+            background: #30363d;
+            color: #c9d1d9;
+        }
+
+        .btn-reset:hover {
+            background: #3c444d;
+        }
+
+        .momentum-equation {
+            position: absolute;
+            top: 70px;
+            right: 20px;
+            background: rgba(13, 17, 23, 0.9);
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.75rem;
+        }
+
+        .eq-line {
+            margin-bottom: 4px;
+            color: #c9d1d9;
+        }
+
+        .eq-line:last-child {
+            margin-bottom: 0;
+        }
+
+        .eq-var {
+            color: #79c0ff;
+        }
+
+        .eq-num {
+            color: #a5d6ff;
+        }
+
+        .insight-badge {
+            position: absolute;
+            top: 70px;
+            left: 20px;
+            background: rgba(56, 139, 253, 0.15);
+            border: 1px solid rgba(56, 139, 253, 0.4);
+            border-radius: 8px;
+            padding: 10px 14px;
+            max-width: 220px;
+        }
+
+        .insight-badge p {
+            font-size: 0.75rem;
+            color: #c9d1d9;
+            line-height: 1.4;
+        }
+
+        .insight-badge strong {
+            color: #58a6ff;
+        }
+
+        .winner-badge {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(63, 185, 80, 0.2);
+            border: 2px solid #3fb950;
+            border-radius: 12px;
+            padding: 15px 25px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .winner-badge.show {
+            opacity: 1;
+        }
+
+        .winner-badge .icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .winner-badge .text {
+            color: #3fb950;
+            font-weight: 600;
+        }
+
+        .winner-badge.vanilla-winner {
+            background: rgba(248, 81, 73, 0.2);
+            border: 2px solid #f85149;
+        }
+
+        .winner-badge.vanilla-winner .text {
+            color: #f85149;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="panel vanilla">
+            <div class="panel-header">
+                <div class="panel-title">❌ Vanilla GD</div>
+                <div class="panel-subtitle">θ = θ - η·∇L</div>
+            </div>
+            <canvas id="canvas-vanilla"></canvas>
+            <div class="stats-overlay">
+                <div class="stat-grid">
+                    <span class="stat-label">Step</span>
+                    <span class="stat-value" id="step-vanilla">0</span>
+                    <span class="stat-label">Loss</span>
+                    <span class="stat-value" id="loss-vanilla">—</span>
+                </div>
+            </div>
+            <div class="insight-badge">
+                <p><strong>Problem:</strong> Oscillates across the valley, making slow net progress toward the minimum.</p>
+            </div>
+            <div class="winner-badge vanilla-winner" id="winner-badge-vanilla">
+                <div class="icon">🏆</div>
+                <div class="text">Converged First!</div>
+            </div>
+        </div>
+
+        <div class="panel momentum">
+            <div class="panel-header">
+                <div class="panel-title">✓ With Momentum</div>
+                <div class="panel-subtitle">Like a ball rolling downhill</div>
+            </div>
+            <canvas id="canvas-momentum"></canvas>
+            <div class="stats-overlay">
+                <div class="stat-grid">
+                    <span class="stat-label">Step</span>
+                    <span class="stat-value" id="step-momentum">0</span>
+                    <span class="stat-label">Loss</span>
+                    <span class="stat-value" id="loss-momentum">—</span>
+                </div>
+            </div>
+            <div class="momentum-equation">
+                <div class="eq-line"><span class="eq-var">m</span> = <span class="eq-num">β</span>·<span class="eq-var">m</span> + <span class="eq-var">∇L</span></div>
+                <div class="eq-line"><span class="eq-var">θ</span> = <span class="eq-var">θ</span> - <span class="eq-num">η</span>·<span class="eq-var">m</span></div>
+            </div>
+            <div class="velocity-viz">
+                <div class="velocity-title">Accumulated Momentum</div>
+                <div class="velocity-arrow">
+                    <svg width="140" height="50" id="momentum-svg">
+                        <defs>
+                            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                <polygon points="0 0, 10 3.5, 0 7" fill="#3fb950" />
+                            </marker>
+                        </defs>
+                        <line id="momentum-arrow" x1="70" y1="25" x2="70" y2="25"
+                              stroke="#3fb950" stroke-width="3" marker-end="url(#arrowhead)" />
+                    </svg>
+                </div>
+                <div class="gradient-decomposition">
+                    <div class="gradient-row">
+                        <span class="gradient-label">θ₁ (steep)</span>
+                        <div class="gradient-bar-container">
+                            <div class="gradient-bar" id="grad-x-bar" style="width: 50%;"></div>
+                        </div>
+                        <span class="gradient-value" id="grad-x-val">0.00</span>
+                    </div>
+                    <div class="gradient-row">
+                        <span class="gradient-label">θ₂ (flat)</span>
+                        <div class="gradient-bar-container">
+                            <div class="gradient-bar positive" id="grad-y-bar" style="width: 50%;"></div>
+                        </div>
+                        <span class="gradient-value" id="grad-y-val">0.00</span>
+                    </div>
+                    <div class="insight-label" id="momentum-insight">Oscillations cancel, consistency accumulates!</div>
+                </div>
+            </div>
+            <div class="winner-badge" id="winner-badge">
+                <div class="icon">🏆</div>
+                <div class="text">Converged First!</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls-bar">
+        <div class="control-group">
+            <span class="control-label">Learning Rate (η)</span>
+            <input type="range" id="lr-slider" min="0.005" max="0.08" step="0.001" value="0.025">
+            <span class="control-value" id="lr-value">0.025</span>
+        </div>
+        <div class="control-group">
+            <span class="control-label">Momentum (β)</span>
+            <input type="range" id="beta-slider" min="0" max="0.99" step="0.01" value="0.9">
+            <span class="control-value" id="beta-value">0.90</span>
+        </div>
+        <div class="control-group">
+            <span class="control-label">Valley Stretch</span>
+            <input type="range" id="stretch-slider" min="2" max="20" step="0.5" value="10">
+            <span class="control-value" id="stretch-value">10×</span>
+        </div>
+        <div class="button-group">
+            <button class="btn-start" id="start-btn">▶ Race!</button>
+            <button class="btn-reset" id="reset-btn">↺ Reset</button>
+        </div>
+    </div>
+
+    <script>
+        // Setup for both canvases
+        function setupScene(canvasId) {
+            const canvas = document.getElementById(canvasId);
+            const container = canvas.parentElement;
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0d1117);
+
+            const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(6, 8, 10);
+            camera.lookAt(0, 0, 0);
+
+            const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // Lights
+            scene.add(new THREE.AmbientLight(0x404040, 0.6));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            scene.add(dirLight);
+
+            return { scene, camera, renderer, canvas };
+        }
+
+        const vanillaSetup = setupScene('canvas-vanilla');
+        const momentumSetup = setupScene('canvas-momentum');
+
+        // State
+        let stretchFactor = 10;
+        let lr = 0.025;
+        let beta = 0.9;
+
+        const startPos = [5, 4.5];
+        let thetaVanilla = [...startPos];
+        let thetaMomentum = [...startPos];
+        let momentum = [0, 0];
+        let trajVanilla = [];
+        let trajMomentum = [];
+        let stepVanilla = 0;
+        let stepMomentum = 0;
+        let running = false;
+        let vanillaConverged = false;
+        let momentumConverged = false;
+
+        // Meshes
+        let surfaceVanilla, surfaceMomentum;
+        let ballVanilla, ballMomentum;
+
+        function createSurface(scene, color1, color2) {
+            const geometry = new THREE.PlaneGeometry(12, 12, 80, 80);
+            const positions = geometry.attributes.position.array;
+
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i];
+                const z = positions[i + 1];
+                const a = stretchFactor;
+                const y = 0.5 * (a * x * x / 16 + z * z / 16) * 3;
+                positions[i + 2] = y;
+            }
+
+            geometry.computeVertexNormals();
+
+            const colors = [];
+            for (let i = 0; i < positions.length; i += 3) {
+                const y = positions[i + 2];
+                const t = Math.min(y / 3.5, 1);
+                const c1 = new THREE.Color(color1);
+                const c2 = new THREE.Color(color2);
+                c1.lerp(c2, t);
+                colors.push(c1.r, c1.g, c1.b);
+            }
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.85,
+                shininess: 30
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.x = -Math.PI / 2;
+            scene.add(mesh);
+
+            // Wireframe
+            const wireGeo = new THREE.WireframeGeometry(geometry);
+            const wireMat = new THREE.LineBasicMaterial({ color: 0x30363d, transparent: true, opacity: 0.25 });
+            const wireframe = new THREE.LineSegments(wireGeo, wireMat);
+            wireframe.rotation.x = -Math.PI / 2;
+            scene.add(wireframe);
+
+            return mesh;
+        }
+
+        function createBall(scene, color) {
+            const geometry = new THREE.SphereGeometry(0.18, 32, 32);
+            const material = new THREE.MeshPhongMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.3,
+                shininess: 100
+            });
+            const ball = new THREE.Mesh(geometry, material);
+            scene.add(ball);
+
+            // Glow
+            const glowGeo = new THREE.SphereGeometry(0.28, 32, 32);
+            const glowMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.2 });
+            ball.add(new THREE.Mesh(glowGeo, glowMat));
+
+            return ball;
+        }
+
+        function getHeight(x, z) {
+            return 0.5 * (stretchFactor * x * x / 16 + z * z / 16) * 3;
+        }
+
+        function loss(t) {
+            return 0.5 * (stretchFactor * t[0] * t[0] + t[1] * t[1]);
+        }
+
+        function gradient(t) {
+            return [stretchFactor * t[0], t[1]];
+        }
+
+        function updateBallPosition(ball, theta) {
+            ball.position.set(theta[0], getHeight(theta[0], theta[1]) + 0.18, theta[1]);
+        }
+
+        function drawTrajectory(scene, trajectory, color) {
+            // Remove old trajectory
+            scene.children = scene.children.filter(c => c.name !== 'trajectory' && c.name !== 'trajDot');
+
+            if (trajectory.length < 2) return;
+
+            const points = trajectory.map(p => new THREE.Vector3(p[0], getHeight(p[0], p[1]) + 0.05, p[1]));
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: color }));
+            line.name = 'trajectory';
+            scene.add(line);
+
+            // Dots
+            const dotGeo = new THREE.SphereGeometry(0.04, 8, 8);
+            const dotMat = new THREE.MeshBasicMaterial({ color: color });
+            points.forEach((p, i) => {
+                if (i % 3 === 0) {
+                    const dot = new THREE.Mesh(dotGeo, dotMat);
+                    dot.position.copy(p);
+                    dot.name = 'trajDot';
+                    scene.add(dot);
+                }
+            });
+        }
+
+        let prevMomentumX = 0;
+
+        function updateMomentumArrow() {
+            const arrow = document.getElementById('momentum-arrow');
+            const mag = Math.sqrt(momentum[0] * momentum[0] + momentum[1] * momentum[1]);
+            const angle = Math.atan2(-momentum[1], -momentum[0]);
+            const len = Math.min(mag * 3, 50);
+
+            const x2 = 70 + len * Math.cos(angle);
+            const y2 = 25 + len * Math.sin(angle);
+
+            arrow.setAttribute('x2', x2);
+            arrow.setAttribute('y2', y2);
+
+            // Update gradient component bars
+            const gradXBar = document.getElementById('grad-x-bar');
+            const gradYBar = document.getElementById('grad-y-bar');
+            const gradXVal = document.getElementById('grad-x-val');
+            const gradYVal = document.getElementById('grad-y-val');
+            const insight = document.getElementById('momentum-insight');
+
+            // Normalize for display
+            const maxMomentum = 5;
+            const xPercent = Math.min(Math.abs(momentum[0]) / maxMomentum * 100, 100);
+            const yPercent = Math.min(Math.abs(momentum[1]) / maxMomentum * 100, 100);
+
+            gradXBar.style.width = xPercent + '%';
+            gradYBar.style.width = yPercent + '%';
+
+            gradXVal.textContent = momentum[0].toFixed(2);
+            gradYVal.textContent = momentum[1].toFixed(2);
+
+            // Check if x is oscillating (sign change)
+            const isOscillating = prevMomentumX * momentum[0] < 0;
+            if (isOscillating) {
+                gradXBar.classList.add('oscillating');
+            } else {
+                gradXBar.classList.remove('oscillating');
+                gradXBar.classList.toggle('positive', momentum[0] <= 0);
+                gradXBar.classList.toggle('negative', momentum[0] > 0);
+            }
+
+            gradYBar.classList.toggle('positive', momentum[1] <= 0);
+            gradYBar.classList.toggle('negative', momentum[1] > 0);
+
+            prevMomentumX = momentum[0];
+
+            // Update insight based on state
+            if (Math.abs(momentum[0]) < 0.5 && Math.abs(momentum[1]) > 1) {
+                insight.textContent = '✨ X oscillations cancelled! Y building up!';
+                insight.style.color = '#3fb950';
+            } else if (stepMomentum > 10) {
+                insight.textContent = 'Oscillations cancel, consistency accumulates!';
+                insight.style.color = '#f0883e';
+            }
+        }
+
+        function init() {
+            // Clear scenes
+            vanillaSetup.scene.children = vanillaSetup.scene.children.filter(c => c.type === 'AmbientLight' || c.type === 'DirectionalLight');
+            momentumSetup.scene.children = momentumSetup.scene.children.filter(c => c.type === 'AmbientLight' || c.type === 'DirectionalLight');
+
+            // Create surfaces
+            surfaceVanilla = createSurface(vanillaSetup.scene, 0x21262d, 0x6e4040);
+            surfaceMomentum = createSurface(momentumSetup.scene, 0x21262d, 0x2d5a3a);
+
+            // Create balls
+            ballVanilla = createBall(vanillaSetup.scene, 0xf85149);
+            ballMomentum = createBall(momentumSetup.scene, 0x3fb950);
+
+            updateBallPosition(ballVanilla, thetaVanilla);
+            updateBallPosition(ballMomentum, thetaMomentum);
+        }
+
+        function reset() {
+            running = false;
+            document.getElementById('start-btn').textContent = '▶ Race!';
+            document.getElementById('start-btn').classList.remove('running');
+            document.getElementById('winner-badge').classList.remove('show');
+            document.getElementById('winner-badge-vanilla').classList.remove('show');
+
+            thetaVanilla = [...startPos];
+            thetaMomentum = [...startPos];
+            momentum = [0, 0];
+            trajVanilla = [[...thetaVanilla]];
+            trajMomentum = [[...thetaMomentum]];
+            stepVanilla = 0;
+            stepMomentum = 0;
+            vanillaConverged = false;
+            momentumConverged = false;
+
+            init();
+            updateUI();
+            updateMomentumArrow();
+        }
+
+        function step() {
+            const gradV = gradient(thetaVanilla);
+            const gradM = gradient(thetaMomentum);
+
+            // Vanilla GD
+            if (!vanillaConverged) {
+                thetaVanilla[0] -= lr * gradV[0];
+                thetaVanilla[1] -= lr * gradV[1];
+                trajVanilla.push([...thetaVanilla]);
+                stepVanilla++;
+
+                if (loss(thetaVanilla) < 0.01) {
+                    vanillaConverged = true;
+                    if (!momentumConverged) {
+                        document.getElementById('winner-badge-vanilla').classList.add('show');
+                    }
+                }
+            }
+
+            // Momentum
+            if (!momentumConverged) {
+                momentum[0] = beta * momentum[0] + gradM[0];
+                momentum[1] = beta * momentum[1] + gradM[1];
+                thetaMomentum[0] -= lr * momentum[0];
+                thetaMomentum[1] -= lr * momentum[1];
+                trajMomentum.push([...thetaMomentum]);
+                stepMomentum++;
+
+                if (loss(thetaMomentum) < 0.01) {
+                    momentumConverged = true;
+                    if (!vanillaConverged) {
+                        document.getElementById('winner-badge').classList.add('show');
+                    }
+                }
+            }
+
+            // Update visuals
+            updateBallPosition(ballVanilla, thetaVanilla);
+            updateBallPosition(ballMomentum, thetaMomentum);
+            drawTrajectory(vanillaSetup.scene, trajVanilla, 0xf85149);
+            drawTrajectory(momentumSetup.scene, trajMomentum, 0x3fb950);
+            updateMomentumArrow();
+            updateUI();
+
+            if (vanillaConverged && momentumConverged) {
+                running = false;
+                document.getElementById('start-btn').textContent = '▶ Race!';
+                document.getElementById('start-btn').classList.remove('running');
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('step-vanilla').textContent = stepVanilla;
+            document.getElementById('step-momentum').textContent = stepMomentum;
+            document.getElementById('loss-vanilla').textContent = loss(thetaVanilla).toFixed(4);
+            document.getElementById('loss-momentum').textContent = loss(thetaMomentum).toFixed(4);
+        }
+
+        // Mouse rotation
+        let rotation = { x: 0.7, y: 0.3 };
+        let isDragging = false;
+        let prevMouse = { x: 0, y: 0 };
+
+        document.addEventListener('mousedown', (e) => {
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+                isDragging = true;
+                prevMouse = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            rotation.y += (e.clientX - prevMouse.x) * 0.005;
+            rotation.x += (e.clientY - prevMouse.y) * 0.005;
+            rotation.x = Math.max(0.3, Math.min(1.2, rotation.x));
+            prevMouse = { x: e.clientX, y: e.clientY };
+        });
+
+        document.addEventListener('mouseup', () => isDragging = false);
+
+        // Controls
+        document.getElementById('lr-slider').addEventListener('input', (e) => {
+            lr = parseFloat(e.target.value);
+            document.getElementById('lr-value').textContent = lr.toFixed(3);
+        });
+
+        document.getElementById('beta-slider').addEventListener('input', (e) => {
+            beta = parseFloat(e.target.value);
+            document.getElementById('beta-value').textContent = beta.toFixed(2);
+        });
+
+        document.getElementById('stretch-slider').addEventListener('input', (e) => {
+            stretchFactor = parseFloat(e.target.value);
+            document.getElementById('stretch-value').textContent = stretchFactor.toFixed(0) + '×';
+            reset();
+        });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            running = !running;
+            const btn = document.getElementById('start-btn');
+            btn.textContent = running ? '⏸ Pause' : '▶ Race!';
+            btn.classList.toggle('running', running);
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', reset);
+
+        // Animation
+        let lastTime = 0;
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            // Update cameras
+            const radius = 12;
+            [vanillaSetup, momentumSetup].forEach(setup => {
+                setup.camera.position.x = radius * Math.sin(rotation.y) * Math.cos(rotation.x);
+                setup.camera.position.y = radius * Math.sin(rotation.x);
+                setup.camera.position.z = radius * Math.cos(rotation.y) * Math.cos(rotation.x);
+                setup.camera.lookAt(0, 0.5, 0);
+            });
+
+            if (running && time - lastTime > 60) {
+                step();
+                lastTime = time;
+            }
+
+            vanillaSetup.renderer.render(vanillaSetup.scene, vanillaSetup.camera);
+            momentumSetup.renderer.render(momentumSetup.scene, momentumSetup.camera);
+        }
+
+        // Resize
+        window.addEventListener('resize', () => {
+            [vanillaSetup, momentumSetup].forEach(setup => {
+                const container = setup.canvas.parentElement;
+                setup.camera.aspect = container.clientWidth / container.clientHeight;
+                setup.camera.updateProjectionMatrix();
+                setup.renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+        });
+
+        // Init
+        reset();
+        animate(0);
+    </script>
+</body>
+</html>
