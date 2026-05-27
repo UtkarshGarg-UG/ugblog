@@ -176,20 +176,44 @@
     .scrolly-nav { display: none; }
   }
 
-  /* Mobile: stack columns */
+  /* Mobile: stack columns. The visual panel goes ABOVE the text and sticks to
+     the top of the viewport while the reader scrolls through the article. Without
+     this, the entire text column comes first in document order and the visuals
+     end up at the bottom of the article where most readers never see them. */
   @media (max-width: 920px) {
     .scrolly-grid {
       grid-template-columns: 1fr;
       gap: 0;
     }
     .scrolly-vis {
-      position: relative;
+      order: -1;              /* render before the text in single-column stack */
+      position: sticky;
       top: 0;
-      height: 440px;
-      margin-bottom: 24px;
+      height: 48vh;
+      min-height: 320px;
+      max-height: 460px;
+      margin: 0 0 16px;
+      z-index: 5;
+      background: #1a1813;
+    }
+    .vis-stage {
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+      border-top: none;
     }
     .scrolly-text > section[data-vis] {
-      padding: 30px 0;
+      padding: 26px 0;
+      /* When scrolling to a section anchor, skip past the sticky visual panel */
+      scroll-margin-top: calc(48vh + 16px);
+    }
+    .scrolly-text > section[data-vis]:first-child { padding-top: 16px; }
+    .scrolly-header {
+      max-width: 100%;
+      margin-bottom: 16px;
+    }
+    .scrolly-article {
+      padding: 16px 0 40px;
     }
   }
 </style>
@@ -286,9 +310,15 @@
     }
   }
 
-  // Pick the section closest to a horizontal trigger line at 40% of viewport
+  // Pick the section closest to a horizontal trigger line. On mobile the
+  // visual panel is sticky at the top (~48vh), so we trigger on the visible
+  // text area below it; on desktop the visual is to the side and we trigger
+  // at 40% of the viewport.
   function selectActive() {
-    const triggerY = window.innerHeight * 0.4;
+    const isMobile = window.innerWidth <= 920;
+    const triggerY = isMobile
+      ? window.innerHeight * 0.75
+      : window.innerHeight * 0.4;
     let bestIdx = 0;
     let bestDist = Infinity;
     sections.forEach((s, i) => {
