@@ -7,6 +7,11 @@ layout: scrolly
 summary: "Three beauties meet in this paper. Words in one language end up internally aligned by meaning. For languages with shared structure, that arrangement is shaped almost the same way across both. A GAN and an SVD recover the rotation between them, strongly for close pairs, weakly for distant ones, with no parallel text."
 tags: ["nlp", "linguistics", "linear-algebra", "embeddings", "gan", "procrustes", "svd"]
 showToc: false
+cover:
+    image: "word-translation/cover.svg"
+    alt: "Two embedding clouds aligning into shared bilingual word pairs"
+    caption: "Two languages, learned independently, share the same shape."
+    hiddenInSingle: true
 ---
 
 <section data-vis="hero">
